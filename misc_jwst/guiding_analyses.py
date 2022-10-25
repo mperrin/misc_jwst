@@ -1,6 +1,7 @@
 
 import os, sys
 import requests
+import functools
 from astroquery.mast import Mast,Observations
 from astropy.table import Table, unique, vstack
 import astropy.time
@@ -58,6 +59,7 @@ def set_params(parameters):
     return [{"paramName":p, "values":v} for p,v in parameters.items()]
 
 
+@functools.lru_cache
 def find_relevant_guiding_file(sci_filename, verbose=True):
     """ Given a filename of a JWST science file, retrieve the relevant guiding data product. 
     This uses FITS keywords in the science header to determine the time period and guide mode,
@@ -109,8 +111,14 @@ def find_relevant_guiding_file(sci_filename, verbose=True):
         print("Found guiding telemetry files:")
         for p in products:
             print("   ", p)
-            
-    guide_timestamps = np.asarray([fn.split('_')[2] for fn in products], int)
+
+    # Some guide files are split into multiple segments, which we have to deal with.
+    guide_timestamp_parts = [fn.split('_')[2] for fn in products]
+    is_segmented = ['seg' in part for part in guide_timestamp_parts]
+    for i in range(len(guide_timestamp_parts)):
+        if is_segmented[i]:
+            guide_timestamp_parts[i] = guide_timestamp_parts[i].split('-')[0]
+    guide_timestamps = np.asarray(guide_timestamp_parts, int)
     t_beg = astropy.time.Time(sci_hdul[0].header['DATE-BEG'])
     t_end = astropy.time.Time(sci_hdul[0].header['DATE-END'])
     obs_end_time = int(t_end.strftime('%Y%j%H%M%S'))
@@ -130,7 +138,14 @@ def find_relevant_guiding_file(sci_filename, verbose=True):
         print("   ", products[wmatch])  
         print(f"    t_end = {obs_end_time}\t delta = {delta_min}")
         
-    products_to_fetch = [products[wmatch],]
+    if is_segmented[wmatch]:
+        # We ought to fetch all the segmented GS files for that guide period
+        products_to_fetch = [fn for fn in products if fn.startswith(products[wmatch][0:33])]
+        if verbose:
+            print("   That GS data is divided into multiple segment files:")
+            print("   ".join(products_to_fetch))
+    else:
+        products_to_fetch = [products[wmatch],]
     
     outfiles = mast_retrieve_guiding_files(products_to_fetch)
     
@@ -141,24 +156,35 @@ def guiding_performance_plot(sci_filename, verbose=True, save=False):
     
     
     """
-    
+
     # Retrieve the guiding packet file from MAST
     gs_fns = find_relevant_guiding_file(sci_filename)
 
     gs_fn = gs_fns[0]
-    gs_fn_base = os.path.splitext(os.path.basename(gs_fn))[0]
 
-    
-    
+    # Determine start and end times for the exposure
     with fits.open(sci_filename) as sci_hdul:
         t_beg = astropy.time.Time(sci_hdul[0].header['DATE-BEG'])
         t_end = astropy.time.Time(sci_hdul[0].header['DATE-END'])
 
+    # We may have multiple GS filenames returned, in the case where the data is split into several segments
+    # If so, concatenat them
 
-    # Read the data from that file, and parse into astropy Times
+    for i, gs_fn in enumerate(gs_fns):
+        gs_fn_base = os.path.splitext(os.path.basename(gs_fn))[0]
 
-    pointing_table = astropy.table.Table.read(gs_fn, hdu=4) #, extname='POINTING') #, ext=4)
-    centroid_table = astropy.table.Table.read(gs_fn, hdu=5) #, extname='POINTING') #, ext=4)
+        if i==0:  # For a single file or first segment, just read it in
+            # Read the data from that file, and parse into astropy Times
+            pointing_table = astropy.table.Table.read(gs_fn, hdu=4)
+            centroid_table = astropy.table.Table.read(gs_fn, hdu=5)
+            display_gs_fn = os.path.basename(gs_fn)
+        else:  # for a later segment, read in and append
+            pointing_table_more = astropy.table.Table.read(gs_fn, hdu=4)
+            centroid_table_more = astropy.table.Table.read(gs_fn, hdu=5)
+            pointing_table = astropy.table.vstack([pointing_table, pointing_table_more], metadata_conflicts='silent')
+            centroid_table = astropy.table.vstack([centroid_table, centroid_table_more], metadata_conflicts='silent')
+            display_gs_fn = os.path.basename(gs_fn)[0:33]+ "-seg*_cal.fits"
+ 
 
     mask = centroid_table.columns['bad_centroid_dq_flag'] == 'GOOD'
 
@@ -186,7 +212,7 @@ def guiding_performance_plot(sci_filename, verbose=True, save=False):
     axes[0].semilogy(ptimes.plot_date, pointing_table.columns['jitter'], alpha=1, color='C0')
     axes[0].set_ylim(1e-2, 1e3)
     axes[0].set_ylabel("Jitter\n[mas]", fontsize=18)
-    axes[0].text(0.01, 0.95, os.path.basename(gs_fn), fontsize=16, transform=axes[0].transAxes, verticalalignment='top')
+    axes[0].text(0.01, 0.95, display_gs_fn, fontsize=16, transform=axes[0].transAxes, verticalalignment='top')
 
     axes[0].axvspan(t_beg.plot_date, t_end.plot_date, color='green', alpha=0.15)
     axes[0].text(t_beg.plot_date, 50, " Exposure", color='green')
