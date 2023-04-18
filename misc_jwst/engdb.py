@@ -65,11 +65,16 @@ def pretty_print_event_log(eventlog):
     for value in reader(eventlog, delimiter=',', quotechar='"'):
         print(f"{value[0][0:22]:20s}\t {value[2]}")
 
-def visit_start_end_times(eventlog, visitid=None):
+def visit_start_end_times(eventlog, visitid=None, return_table=False):
+    """ Find visit start and end times for all visits
+
+    """
     # parse response (ignoring header line) and print new event messages
     vid = ''
     in_visit = False
     in_selected_visit = False
+
+    outputs = {k: [] for k in ['visitid', 'visitstart', 'visitend', 'duration']}
 
     output = []
     output.append('Visit ID     | Visit Start             | Visit End'
@@ -93,6 +98,11 @@ def visit_start_end_times(eventlog, visitid=None):
                 dur = datetime.fromisoformat(vend) - datetime.fromisoformat(vstart)
                 output.append(f'{vid} | {vstart:23} | {vend:23} | '
                       f' {round(dur.total_seconds()):6}  |')
+                outputs['visitid'].append(vid)
+                outputs['visitstart'].append(vstart)
+                outputs['visitend'].append(vend)
+                outputs['duration'].append(dur.total_seconds())
+
                 in_visit = False
         elif msg[:31] == f'Script terminated: {vid}':
             if msg[-5:] == 'ERROR':
@@ -111,6 +121,14 @@ def visit_start_end_times(eventlog, visitid=None):
     else:
         for row in output:
             print(row)
+
+    if return_table:
+        t = astropy.table.Table(list(outputs.values()), names = outputs.keys() )
+        t['visitstart'] = astropy.time.Time(t['visitstart'])
+        t['visitend'] = astropy.time.Time(t['visitend'])
+
+        return(t)
+
 
 def extract_oss_event_msgs_for_visit(eventlog, selected_visit_id, ta_only=False, verbose=False):
 
@@ -194,7 +212,7 @@ def eventtable_extract_visit(event_table, selected_visit_id, verbose=False):
 
 
 
-def visit_script_durations(event_table, selected_visit_id):
+def visit_script_durations(event_table, selected_visit_id, return_table=False):
 
     visittable = eventtable_extract_visit(event_table, selected_visit_id)
 
@@ -260,12 +278,20 @@ def visit_script_durations(event_table, selected_visit_id):
     label='Visit total'
     print(f"\t{label:15s}\t{total_visit_duration*86400:6.1f} s")
 
-    for category in ['Slew', 'FGS', 'TA', 'Science obs', 'Other']:
+    categories = ['Slew', 'FGS', 'TA', 'Science obs', 'Other']
+    parts = []
+    for category in categories:
         label=category+":"
         if category not in summary_durations: # Skip if e.g. there's no TA in this visit
+            parts.append(0)
             continue
+        parts.append(summary_durations[category]*86400)
         print(f"\t{label:15s}\t{summary_durations[category]*86400:6.1f} s")
     print("\n")
+
+    if return_table:
+        t = astropy.table.Table([categories, parts], names = ['category', 'duration'])
+        return(t)
 
 
 #############################################
