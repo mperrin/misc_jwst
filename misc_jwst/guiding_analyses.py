@@ -7,9 +7,12 @@ from astropy.table import Table, unique, vstack
 import astropy.time
 import astropy.io.fits as fits
 import numpy as np
+import scipy
 
-import matplotlib.pyplot as plt
+import matplotlib, matplotlib.pyplot as plt
 
+import pysiaf
+import jwst.datamodels
 
 def mast_retrieve_guiding_files(filenames, out_dir='.'):
     """Download one or more guiding data products from MAST
@@ -372,4 +375,256 @@ def guiding_performance_jitterball(sci_filename, fov_size = 8, nbins=50, verbose
         if verbose:
             print(f' ==> {outname}')
 
+@functools.lru_cache
+def find_guiding_id_file(sci_filename=None, progid=None, obs=None, visit=1, verbose=True):
+    """ Given a filename of a JWST science file, retrieve the relevant guiding ID data product.
+    This uses FITS keywords in the science header to determine the time period and guide mode,
+    and then retrieves the file from MAST
 
+    """
+
+
+    if sci_filename is not None:
+        sci_hdul = fits.open(sci_filename)
+
+        progid_str = sci_hdul[0].header['PROGRAM']
+        obs_str = sci_hdul[0].header['OBSERVTN']
+        visit_str = sci_hdul[0].header['VISIT_ID']
+    elif progid is None or obs is None or visit is None:
+        raise RuntimeError("You must supply either the sci_filename parameter, or both progid and obs (optionally also visit)")
+    else:
+        progid_str = f'{progid:05d}'
+        obs_str = f'{obs:03d}'
+        visit_str = f'{progid:05d}{obs:03d}{visit:03d}'
+
+
+
+    # Set up the query
+    keywords = {
+    'program': [progid_str]
+    ,'observtn': [obs_str]
+    ,'visit_id': [visit_str]
+    ,'exp_type': ['FGS_ID-IMAGE']
+    }
+
+    params = {
+        'columns': '*',
+        'filters': set_params(keywords)
+        }
+
+
+    # Run the web service query. This uses the specialized, lower-level webservice for the
+    # guidestar queries: https://mast.stsci.edu/api/v0/_services.html#MastScienceInstrumentKeywordsGuideStar
+
+    service = 'Mast.Jwst.Filtered.GuideStar'
+    t = Mast.service_request(service, params)
+
+
+    if len(t) > 0:
+        # Ensure unique file names, should any be repeated over multiple observations (e.g. if parallels):
+        fn = list(set(t['fileName']))
+        # Set of derived Observation IDs:
+
+        products = list(set(fn))
+        # If you want the uncals instead do this:
+        #products = list(set([x.replace('_cal','_uncal') for x in fn]))
+    products.sort()
+
+
+    if verbose:
+        print(f"For science data file: {sci_filename}")
+        print("Found guiding ID image files:")
+        for p in products:
+            print("   ", p)
+
+
+    outfiles = mast_retrieve_guiding_files(products)
+
+    return outfiles
+
+
+
+import functools
+
+@functools.cache
+def get_siaf_aperture(guidername):
+    """Get an FGS SIAF aperture
+    With caching since loading SIAF is slow the first time"""
+    gid = guidername[-1] # '1' or '2'
+    s = pysiaf.Siaf('FGS')
+    return s.apertures[f'FGS{gid}_FULL_OSS']  # not sure if the _OSS is needed in this case or not
+
+
+
+@functools.cache
+def get_visit_contents(visfilename):
+    """Load a visit file, with caching since the
+    same visit file may be used for several GS ID attempts
+    """
+    import visitviewer
+    return visitviewer.VisitFileContents(visfilename)
+
+
+def display_one_id_image(filename, destripe = True, smooth=True, ax=None,
+                         show_metadata=True, plot_guidestars=True, count=0,
+                        orientation='sci', return_model=False):
+    """Display a JWST Guiding ID image
+
+    Displays on a log stretch, optionally with overplotted guide star information if the visit files are available
+
+    Parameters
+    ----------
+    destripe, smooth : Bool
+        should we do some image processing to make the guide stars easier to see in the images
+
+    orientation : 'sci' or 'raw':
+        'sci' puts science frame 0,0 at lower left, like MAST output products seen in DS9
+        'raw' puts detetor raw frame 0,0 at upper left, like the FGS DHAS tool's plots
+
+    return_model : bool
+        Optional, return the image model if you want to do some further image manipulations
+        (for efficiency to avoid reloading it multiple times)
+    """
+
+    model = jwst.datamodels.open(filename)
+
+    im = model.data[0]
+
+    if ax is None:
+        ax = plt.gca()
+
+    if destripe:
+        im = im - np.median(im, axis=0).reshape([1, im.shape[1]])
+
+    if smooth:
+        im = scipy.ndimage.median_filter(im, size=3)
+
+
+    if orientation=='raw':
+        # Display like in raw detector orientation, consistent with usage on-board and in FGS DHAS analyses
+
+        if model.meta.instrument.detector=='GUIDER2':
+            im = im.transpose()
+            im = im[::-1]
+        else:
+            im = np.rot90(im)
+            im = im[:, ::-1] # maybe??
+        origin='upper' # Argh, the FGS DHAS diagnostic plots put 0,0 at the UPPER left
+    else:
+        origin='lower'
+
+    mean, median, sigma = astropy.stats.sigma_clipped_stats(im, )
+
+    norm = matplotlib.colors.AsinhNorm(vmin = median-sigma, vmax=10*sigma, linear_width=2*sigma)
+
+    ax.imshow(im, norm=norm, origin=origin)
+
+    ax.set_title(os.path.basename(filename))
+    #ax.xaxis.set_ticks([])
+    #ax.yaxis.set_ticks([])
+
+    if show_metadata:
+        ax.text(0.01, 0.99, f'{model.meta.instrument.detector}\nGS index: {model.meta.guidestar.gs_order}',
+                color='yellow',
+                transform=ax.transAxes,
+                verticalalignment='top')
+        if orientation=='raw':
+            ax.text(0.99, 0.99, f'detector raw orientation',
+                color='yellow',
+                transform=ax.transAxes,
+                verticalalignment='top', horizontalalignment='right')
+
+
+    if plot_guidestars:
+        visfilename = f'V{model.meta.observation.visit_id}.vst'
+
+        if os.path.exists(visfilename):
+            if count==0: print(f'Found visit file {visfilename}')
+            vis = get_visit_contents(visfilename)
+            if count==0: print("Retrieving and plotting guide star info from visit file")
+
+            gsinfo = vis.guide_activities[model.meta.guidestar.gs_order - 1]
+
+
+
+            ap = get_siaf_aperture(model.meta.instrument.detector)
+            pixscale = (ap.XSciScale + ap.YSciScale)/2
+
+            if orientation=='raw':
+                coord_transform = ap.idl_to_det
+            else:
+                def coord_transform(*args):
+                    x,y = ap.idl_to_sci(*args)
+                    return  y, model.data.shape[-1]-x  # I don't understand the coord transform and why this flip is needed but it works
+
+            def add_circle(x,y, radius=10/pixscale/3, color='white',
+                           label=None):
+                ax.add_patch(matplotlib.patches.Circle( (x,y), radius, edgecolor=color,
+                                                       facecolor='none'))
+                ax.add_patch(matplotlib.patches.Circle( (x,y), radius*3, edgecolor=color,
+                                                       facecolor='none', ls='dotted'))
+
+                if label is not None:
+                    ax.text(x, y, label, color=color, fontweight='bold', alpha=0.75)
+
+
+            dety, detx = coord_transform(gsinfo.GSXID, gsinfo.GSYID)
+            #ax.scatter(detx, dety, s=300, marker='o', color='orange', facecolor='none')
+
+            add_circle(detx, dety, label=f'commanded\nGS candidate {model.meta.guidestar.gs_order }\n',
+                       color='orange')
+
+            for ref_id in range(1,10):
+                if hasattr(gsinfo, f'REF{ref_id}X'):
+                    dety, detx = coord_transform(getattr(gsinfo, f'REF{ref_id}X'),
+                                               getattr(gsinfo, f'REF{ref_id}Y'))
+                    add_circle(detx, dety,
+                               label=f'commanded\nRef {ref_id}\n', color='magenta')
+
+    if return_model:
+        return model
+
+def show_all_gs_id_images(filenames):
+    """Show a set of GS ID images, notionally all from the same visit
+
+    Displays a grid of plots up to 3x3 for the 3 candidates times 3 attempts each
+
+    """
+
+    print(f"Found a total of {len(filenames)} ID images for that observation.")
+
+    ncols= min(3, len(filenames))
+    nrows = int(np.ceil(len(filenames)/3))
+
+    print(f'Loading and plotting ID images...')
+    fig, axes = plt.subplots(figsize=(16,6*nrows), nrows=nrows, ncols=ncols,
+                            gridspec_kw={'wspace': 0.01})
+
+    axesf = axes.flatten() if nrows*ncols>1 else [axes,]
+
+
+    for i, filename in enumerate(filenames):
+        display_one_id_image(filename, ax=axesf[i], orientation='raw', count=i)
+        if np.mod(i,3):
+            axesf[i].set_yticklabels([])
+
+    for extra_ax in axesf[i+1:]:
+        extra_ax.set_axis_off()
+
+def retrieve_and_display_id_images(sci_filename=None, progid=None, obs=None, visit=1, save=True):
+    """ Top-level routine to retrieve and display FGS ID images for a given visit
+
+    You can specify the visit either by giving a science filename (in which case
+    the metadata is read from the header) or directly supplying program ID, observation,
+    and optionally visit number.
+    """
+    filenames = find_guiding_id_file(sci_filename=sci_filename,
+                                                      progid=progid, obs=obs, visit=visit)
+
+    show_all_gs_id_images(filenames)
+
+    if save:
+        visit_id = fits.getheader(filenames[0],ext=0)['VISIT_ID']
+        outname = f'V{visit_id}_ID_images.pdf'
+        plt.savefig(outname, dpi=300, transparent=True)
+        print(f"Output saved to {outname}")
