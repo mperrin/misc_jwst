@@ -237,7 +237,7 @@ def guiding_performance_plot(sci_filename, verbose=True, save=False):
     axes[1].plot(ctimes[mask].plot_date, centroid_table[mask]['guide_star_position_y']-ymean, label='Y Centroids', color='C4')
     axes[1].legend()
     axes[1].axvspan(t_beg.plot_date, t_end.plot_date, color='green', alpha=0.15)
-    axes[1].set_ylabel("GS centroid offsets\n[pixels]", fontsize=18)
+    axes[1].set_ylabel("GS centroid offsets\n[arcsec]", fontsize=18)
     axes[1].axhline(0, ls=":", color='gray')
 
     axes[2].plot(ctimes.plot_date, mask, label='GOOD Centroids', color='C1')
