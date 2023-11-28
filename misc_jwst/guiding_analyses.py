@@ -598,7 +598,12 @@ def show_all_gs_id_images(filenames):
 
     print(f'Loading and plotting ID images...')
     fig, axes = plt.subplots(figsize=(16,6*nrows), nrows=nrows, ncols=ncols,
-                            gridspec_kw={'wspace': 0.01})
+                            gridspec_kw={'wspace': 0.01, 
+                                         'left': 0.05,
+                                         'right': 0.97,
+                                         'top': 0.90,
+                                         'bottom': 0.05,
+                                         })
 
     axesf = axes.flatten() if nrows*ncols>1 else [axes,]
 
@@ -611,7 +616,8 @@ def show_all_gs_id_images(filenames):
     for extra_ax in axesf[i+1:]:
         extra_ax.set_axis_off()
 
-def retrieve_and_display_id_images(sci_filename=None, progid=None, obs=None, visit=1, save=True):
+
+def retrieve_and_display_id_images(sci_filename=None, progid=None, obs=None, visit=1, save=True, save_dpi=150):
     """ Top-level routine to retrieve and display FGS ID images for a given visit
 
     You can specify the visit either by giving a science filename (in which case
@@ -622,9 +628,11 @@ def retrieve_and_display_id_images(sci_filename=None, progid=None, obs=None, vis
                                                       progid=progid, obs=obs, visit=visit)
 
     show_all_gs_id_images(filenames)
+    visit_id = fits.getheader(filenames[0],ext=0)['VISIT_ID']
+    fig = plt.gcf()
+    fig.suptitle(f"FGS ID in V{visit_id}", fontsize=16, fontweight='bold')
 
     if save:
-        visit_id = fits.getheader(filenames[0],ext=0)['VISIT_ID']
         outname = f'V{visit_id}_ID_images.pdf'
-        plt.savefig(outname, dpi=300, transparent=True)
+        plt.savefig(outname, dpi=save_dpi, transparent=True)
         print(f"Output saved to {outname}")
