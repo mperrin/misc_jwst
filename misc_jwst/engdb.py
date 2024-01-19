@@ -130,12 +130,14 @@ def visit_start_end_times(eventlog, visitid=None, return_table=False):
         return(t)
 
 
-def extract_oss_event_msgs_for_visit(eventlog, selected_visit_id, ta_only=False, verbose=False):
+def extract_oss_event_msgs_for_visit(eventlog, selected_visit_id, ta_only=False, verbose=False, return_text=True):
 
     # parse response (ignoring header line) and print new event messages
     vid = ''
     in_selected_visit = False
     in_ta = False
+
+    messages = []
 
     if verbose:
         print(f"\tSearching for visit: {selected_visit_id}")
@@ -143,7 +145,10 @@ def extract_oss_event_msgs_for_visit(eventlog, selected_visit_id, ta_only=False,
         msg, time = row['Message'], row['Time']
 
         if in_selected_visit and ((not ta_only) or in_ta) :
-            print(time[0:22], "\t", msg)
+            if verbose:
+                print(time[0:22], "\t", msg)
+            if return_text:
+                messages.append(time[0:22]+ "\t" + msg)
 
         if msg[:6] == 'VISIT ':
             if msg[-7:] == 'STARTED':
@@ -151,9 +156,10 @@ def extract_oss_event_msgs_for_visit(eventlog, selected_visit_id, ta_only=False,
                 vid = msg.split()[1]
 
                 if vid==selected_visit_id:
-                    print(f"VISIT {selected_visit_id} START FOUND at {vstart}")
+                    if verbose:
+                        print(f"VISIT {selected_visit_id} START FOUND at {vstart}")
                     in_selected_visit = True
-                    if ta_only:
+                    if ta_only and verbose:
                         print("Only displaying TARGET ACQUISITION RESULTS:")
 
             elif msg[-5:] == 'ENDED' and in_selected_visit:
@@ -161,7 +167,8 @@ def extract_oss_event_msgs_for_visit(eventlog, selected_visit_id, ta_only=False,
                 assert selected_visit_id  == msg.split()[1]
 
                 vend = 'T'.join(time.split())[:-3]
-                print(f"VISIT {selected_visit_id} END FOUND at {vend}")
+                if verbose:
+                    print(f"VISIT {selected_visit_id} END FOUND at {vend}")
 
 
                 in_selected_visit = False
@@ -175,6 +182,26 @@ def extract_oss_event_msgs_for_visit(eventlog, selected_visit_id, ta_only=False,
         elif in_selected_visit and msg.startswith('*'): # this string is used to mark the start and end of TA sections
             in_ta = not in_ta
 
+    if return_text:
+        return messages
+
+
+def extract_oss_TA_centroids(eventlog, selected_visit_id):
+    """ Return the TA centroid values from OSS
+    Note, pretty sure these values from OSS are 1-based pixel coordinates - to be confirmed!
+
+    returns (X,Y) tuple
+    """
+
+    msgs = extract_oss_event_msgs_for_visit(eventlog, selected_visit_id,
+                                            ta_only=True,
+                                            verbose=False, return_text=True)
+    for m in msgs:
+        if m.split('\t')[1].startswith("detector coord"):
+            xy = ([float(p.strip('(),')) for p in m.split()[-2:]])
+            return tuple(xy)
+    else:
+        raise RuntimeError("Could not parse TA centroid coordinates in that visit log")
 
 
 def parse_eventlog_to_table(eventlog):

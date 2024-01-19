@@ -154,7 +154,7 @@ def find_relevant_guiding_file(sci_filename, verbose=True):
 
     return outfiles
 
-def guiding_performance_plot(sci_filename, verbose=True, save=False):
+def guiding_performance_plot(sci_filename, verbose=True, save=False, yrange=None):
     """Generate a plot showing the guiding jitter during an exposure
 
 
@@ -239,6 +239,8 @@ def guiding_performance_plot(sci_filename, verbose=True, save=False):
     axes[1].axvspan(t_beg.plot_date, t_end.plot_date, color='green', alpha=0.15)
     axes[1].set_ylabel("GS centroid offsets\n[arcsec]", fontsize=18)
     axes[1].axhline(0, ls=":", color='gray')
+    if yrange is not None:
+        axes[1].set_ylim(*yrange)
 
     axes[2].plot(ctimes.plot_date, mask, label='GOOD Centroids', color='C1')
 
