@@ -24,16 +24,17 @@ def get_ictm_event_log(startdate='2022-02-01', enddate=None, mast_api_token=None
     tz_utc = timezone(timedelta(hours=0))
     colhead = 'theTime'
 
-    # set or interactively get mast token
-    if not mast_api_token:
-        mast_api_token = os.environ.get('MAST_API_TOKEN')
-        if mast_api_token is None:
-            raise ValueError("Must define MAST_API_TOKEN env variable or specify mast_api_token parameter")
-
-
     # establish MAST session
     session = Session()
-    session.headers.update({'Authorization': f'token {mast_api_token}'})
+     # set or interactively get mast token
+    if not mast_api_token:
+        mast_api_token = os.environ.get('MAST_API_TOKEN')
+    if mast_api_token is not None:
+        session.headers.update({'Authorization': f'token {mast_api_token}'})
+    else:
+        import warnings
+        warnings.warn("Must define MAST_API_TOKEN env variable or specify mast_api_token parameter to access proprietary data")
+
 
     # fetch event messages from MAST engineering database (lags FOS EDB)
     start = datetime.fromisoformat(f'{startdate}+00:00')
