@@ -294,7 +294,7 @@ def visit_script_durations(event_table, selected_visit_id, verbose=True, return_
         elif 'TA' in script:
             category='TA'
         elif script[0:3] in ['NRC','NIS','NRS','MIR']:
-            category = 'Parallel' if ('P' in activity_id and activity_id.split('P')[1].startswith('00000')) else 'Science obs'
+            category = 'Parallel' if ('P' in activity_id and not activity_id.split('P')[1].startswith('00000')) else 'Science obs'
         else:
             category='Other'
 
