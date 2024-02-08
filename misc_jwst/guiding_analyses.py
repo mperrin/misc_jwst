@@ -638,3 +638,45 @@ def retrieve_and_display_id_images(sci_filename=None, progid=None, obs=None, vis
         outname = f'V{visit_id}_ID_images.pdf'
         plt.savefig(outname, dpi=save_dpi, transparent=True)
         print(f"Output saved to {outname}")
+
+def which_guider_used(visitid, guidemode = 'FINEGUIDE'):
+    """ Query MAST for which guider was used in a given visit.
+
+    Parameters
+    ----------
+    visitid : str
+        visit ID, like "V01234004001"
+    guidemode : str
+        Which kind of guide mode to check. Defaults to FINEGUIDE but
+        would need to be TRACK for moving targets
+
+    """
+    progid = (visitid[1:6])  # These must be strings
+    obs = (visitid[6:9])
+    visit = (visitid[9:12])
+
+    keywords = {
+    'program': [progid]
+    ,'observtn': [obs]
+    ,'visit': [visit]
+    ,'exp_type': ['FGS_'+guidemode]
+    }
+
+    params = {
+    'columns': '*',
+    'filters': set_params(keywords)
+    }
+
+    # Run the web service query. This uses the specialized, lower-level webservice for the
+    # guidestar queries: https://mast.stsci.edu/api/v0/_services.html#MastScienceInstrumentKeywordsGuideStar
+
+    service = 'Mast.Jwst.Filtered.GuideStar'
+    t = Mast.service_request(service, params)
+
+    # check the APERNAME which should be either the string FGS1_FULL or FGS2_FULL.
+    # All guiding in a visit will use the same guide star, so it's sufficiient to just check the first one 
+    if len(t) > 0:
+        guider_used = t['apername'][0][0:4]
+    else:
+        guider_used = None
+    return guider_used
