@@ -66,7 +66,7 @@ def pretty_print_event_log(eventlog):
     for value in reader(eventlog, delimiter=',', quotechar='"'):
         print(f"{value[0][0:22]:20s}\t {value[2]}")
 
-def visit_start_end_times(eventlog, visitid=None, return_table=False):
+def visit_start_end_times(eventlog, visitid=None, return_table=False, verbose=True):
     """ Find visit start and end times for all visits
 
     """
@@ -114,12 +114,12 @@ def visit_start_end_times(eventlog, visitid=None, return_table=False):
                 output.append(f'{vid} | {vstart:23} | {vend:23} | '
                       f' {round(dur.total_seconds()):6}  | {note}')
                 in_visit = False
-    if visitid:
+    if visitid and verbose:
         print(output[0])
         for row in output:
             if visitid in row:
                 print(row)
-    else:
+    elif verbose:
         for row in output:
             print(row)
 
@@ -240,7 +240,7 @@ def eventtable_extract_visit(event_table, selected_visit_id, verbose=False):
 
 
 
-def visit_script_durations(event_table, selected_visit_id, return_table=False):
+def visit_script_durations(event_table, selected_visit_id, verbose=True, return_table=False):
 
     visittable = eventtable_extract_visit(event_table, selected_visit_id)
 
@@ -254,10 +254,12 @@ def visit_script_durations(event_table, selected_visit_id, return_table=False):
 
     summary_durations = dict()
 
+    def vprint(*args):
+        if verbose: print(*args)
 
 #    scriptevents = eventtable_extract_scripts(event_table, selected_visit_id)
 
-    print(f"OSS Script Durations for {selected_visit_id} (total duration: {total_visit_duration*86400:.1f} s)")
+    vprint(f"OSS Script Durations for {selected_visit_id} (total duration: {total_visit_duration*86400:.1f} s)")
 
     starts = dict()
     stops = dict()
@@ -280,9 +282,9 @@ def visit_script_durations(event_table, selected_visit_id, return_table=False):
 
     for key in starts:
         deltatime = stops[key]-starts[key]
-        print(f"  {key:50s}{deltatime*86400:6.1f} s")
+        vprint(f"  {key:50s}{deltatime*86400:6.1f} s")
         cumulative_time += deltatime
-        script = key.split(":")[1]
+        activity_id, script = key.split(":")
         
         #summarize into categories: slews, FGS, TA, science obs
         if script=='SCSLEWMAIN':
@@ -292,21 +294,25 @@ def visit_script_durations(event_table, selected_visit_id, return_table=False):
         elif 'TA' in script:
             category='TA'
         elif script[0:3] in ['NRC','NIS','NRS','MIR']:
-            category='Science obs'
+            category = 'Parallel' if ('P' in activity_id and activity_id.split('P')[1].startswith('00000')) else 'Science obs'
         else:
             category='Other'
 
         summary_durations[category] = summary_durations.get(category,0) + deltatime
          
 
-    print(f"  Other overheads not included in the above:        {(total_visit_duration-cumulative_time)*86400:6.1f} s")
+    cumulative_time -= summary_durations.get('Parallel', 0)  # Parallels do not add to total time, by construction
+    vprint(f"  Other overheads not included in the above:        {(total_visit_duration-cumulative_time)*86400:6.1f} s")
     summary_durations['Other'] += (total_visit_duration-cumulative_time)
 
-    print("\nSummary by category:")
+    vprint("\nSummary by category:")
     label='Visit total'
-    print(f"\t{label:15s}\t{total_visit_duration*86400:6.1f} s")
+    vprint(f"\t{label:15s}\t{total_visit_duration*86400:6.1f} s")
 
     categories = ['Slew', 'FGS', 'TA', 'Science obs', 'Other']
+    if 'Parallel' in summary_durations:
+        categories.insert(4, 'Parallel')
+
     parts = []
     for category in categories:
         label=category+":"
@@ -314,8 +320,8 @@ def visit_script_durations(event_table, selected_visit_id, return_table=False):
             parts.append(0)
             continue
         parts.append(summary_durations[category]*86400)
-        print(f"\t{label:15s}\t{summary_durations[category]*86400:6.1f} s")
-    print("\n")
+        vprint(f"\t{label:15s}\t{summary_durations[category]*86400:6.1f} s")
+    vprint("\n")
 
     if return_table:
         t = astropy.table.Table([categories, parts], names = ['category', 'duration'])

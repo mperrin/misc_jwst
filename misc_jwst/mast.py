@@ -42,6 +42,9 @@ def jwst_keywords_query(instrument, columns=None, all_columns=False, verbose=Fal
         if isinstance(kwargs[kw], list):
             # query parameters must be of string type, not ints or other numeric types
             query_val = [str(v) for v in kwargs[kw]]
+        elif isinstance(kwargs[kw], dict):
+            # some queries, e.g. ranges with min and max, must be specified as a dict, inside a list
+            query_val = [kwargs[kw],]
         else:
             # and any scalar parameters should be implicitly wrapped into a list
             query_val = [str(kwargs[kw]),]
@@ -59,8 +62,6 @@ def jwst_keywords_query(instrument, columns=None, all_columns=False, verbose=Fal
 
     # Add the initial V to visit ID.
     responsetable['visit_id'] = astropy.table.Column(responsetable['visit_id'], dtype=np.dtype('<U12'))
-    for row in responsetable:
-        row['visit_id'] = 'V' + row['visit_id']
 
     responsetable.add_column(astropy.table.Column(astropy.time.Time(responsetable['vststart_mjd'], format='mjd').iso, dtype=np.dtype('<U16')),
                             # index=1,
