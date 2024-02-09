@@ -14,7 +14,7 @@ import matplotlib, matplotlib.pyplot as plt
 import pysiaf
 import jwst.datamodels
 
-def mast_retrieve_guiding_files(filenames, out_dir='.'):
+def mast_retrieve_guiding_files(filenames, out_dir='.', verbose=True):
     """Download one or more guiding data products from MAST
 
     If the file is already present in the specified local directory, it's not downloaded again.
@@ -36,7 +36,8 @@ def mast_retrieve_guiding_files(filenames, out_dir='.'):
         outfile = os.path.join(out_dir, p)
 
         if os.path.isfile(outfile):
-            print("ALREADY DOWNLOADED: ", outfile)
+            if verbose:
+                print("ALREADY DOWNLOADED: ", outfile)
             outputs.append(outfile)
             continue
 
@@ -51,9 +52,11 @@ def mast_retrieve_guiding_files(filenames, out_dir='.'):
                 fd.write(data)
 
         if not os.path.isfile(outfile):
-            print("ERROR: " + outfile + " failed to download.")
+            if verbose:
+                print("ERROR: " + outfile + " failed to download.")
         else:
-            print("COMPLETE: ", outfile)
+            if verbose:
+                print("COMPLETE: ", outfile)
             outputs.append(outfile)
     return outputs
 
@@ -128,9 +131,9 @@ def find_relevant_guiding_file(sci_filename, verbose=True):
 
     delta_times = np.array(guide_timestamps-obs_end_time, float)
     # want to find the minimum delta which is at least positive
-    print(delta_times)
+    #print(delta_times)
     delta_times[delta_times<0] = np.nan
-    print(delta_times)
+    #print(delta_times)
 
     wmatch = np.argmin(np.abs(delta_times))
     wmatch = np.where(delta_times ==np.nanmin(delta_times))[0][0]
@@ -154,25 +157,87 @@ def find_relevant_guiding_file(sci_filename, verbose=True):
 
     return outfiles
 
-def guiding_performance_plot(sci_filename, verbose=True, save=False, yrange=None):
-    """Generate a plot showing the guiding jitter during an exposure
 
+@functools.lru_cache
+def find_visit_guiding_files(visitid, guidemode='FINEGUIDE', verbose=True):
+    """ Given a JWST visit id string, like 'V01234005001', retrieve all guiding data products
+    for that visit from MAST. Files downloaded into current working directory.
 
     """
 
-    # Retrieve the guiding packet file from MAST
-    gs_fns = find_relevant_guiding_file(sci_filename)
+    progid = visitid[1:6]
+    obs = visitid[6:9]
+
+    # Set up the query
+    keywords = {
+    'program': [progid]
+    ,'observtn': [obs]
+    ,'exp_type': ['FGS_'+guidemode]
+    }
+
+    params = {
+        'columns': '*',
+        'filters': set_params(keywords)
+        }
+
+
+    # Run the web service query. This uses the specialized, lower-level webservice for the
+    # guidestar queries: https://mast.stsci.edu/api/v0/_services.html#MastScienceInstrumentKeywordsGuideStar
+
+    service = 'Mast.Jwst.Filtered.GuideStar'
+    t = Mast.service_request(service, params)
+
+
+    if len(t) > 0:
+        # Ensure unique file names, should any be repeated over multiple observations (e.g. if parallels):
+        fn = list(set(t['fileName']))
+        # Set of derived Observation IDs:
+
+        products = list(set(fn))
+        # If you want the uncals instead do this:
+        #products = list(set([x.replace('_cal','_uncal') for x in fn]))
+    products.sort()
+
+    if verbose:
+        print(f"For visit: {visitid}")
+        print("Found guiding telemetry files:")
+        for p in products:
+            print("   ", p)
+
+    outfiles = mast_retrieve_guiding_files(products)
+
+    return outfiles
+
+
+def guiding_performance_plot(sci_filename=None, visitid=None, verbose=True, save=False, yrange=None,
+                             time_range_fraction=None):
+    """Generate a plot showing the guiding jitter during an exposure or visit
+
+
+    """
+    if sci_filename is None and visitid is None:
+        raise RuntimeError("You must set either sci_filename or visitid")
+
+    # Retrieve the guiding packet file(s) from MAST
+    if visitid:
+        visit_mode = True
+        gs_fns = find_visit_guiding_files(visitid, verbose=verbose)
+    else:
+        visit_mode = False
+        gs_fns = find_relevant_guiding_file(sci_filename)
+
+        # Determine start and end times for the exposure
+        with fits.open(sci_filename) as sci_hdul:
+            t_beg = astropy.time.Time(sci_hdul[0].header['DATE-BEG'])
+            t_end = astropy.time.Time(sci_hdul[0].header['DATE-END'])
 
     gs_fn = gs_fns[0]
-
-    # Determine start and end times for the exposure
-    with fits.open(sci_filename) as sci_hdul:
-        t_beg = astropy.time.Time(sci_hdul[0].header['DATE-BEG'])
-        t_end = astropy.time.Time(sci_hdul[0].header['DATE-END'])
 
     # We may have multiple GS filenames returned, in the case where the data is split into several segments
     # If so, concatenat them
 
+    dither_times = []
+    last_gs_fn_middle= ''
     for i, gs_fn in enumerate(gs_fns):
         gs_fn_base = os.path.splitext(os.path.basename(gs_fn))[0]
 
@@ -181,13 +246,42 @@ def guiding_performance_plot(sci_filename, verbose=True, save=False, yrange=None
             pointing_table = astropy.table.Table.read(gs_fn, hdu=4)
             centroid_table = astropy.table.Table.read(gs_fn, hdu=5)
             display_gs_fn = os.path.basename(gs_fn)
+            if visit_mode:
+                # We have to compute means per segment, since it's not meaningful to combine across dithers
+                mask = centroid_table.columns['bad_centroid_dq_flag'] == 'GOOD'
+                xmean = np.nanmean(centroid_table[mask]['guide_star_position_x'])
+                ymean = np.nanmean(centroid_table[mask]['guide_star_position_y'])
+                centroid_table['guide_star_position_x'] -= xmean
+                centroid_table['guide_star_position_y'] -= ymean
+
+
         else:  # for a later segment, read in and append
             pointing_table_more = astropy.table.Table.read(gs_fn, hdu=4)
             centroid_table_more = astropy.table.Table.read(gs_fn, hdu=5)
+            # mark one point as NaN, to visually show a gap in the plot
+            centroid_table_more['guide_star_position_x'][-1] = np.nan
+            centroid_table_more['guide_star_position_y'][-1] = np.nan
+            centroid_table_more['bad_centroid_dq_flag'][-1] = 'GOOD'
+
+            if visit_mode:
+                fn_middle = os.path.basename(gs_fn).split('-')[1]
+                if fn_middle != last_gs_fn_middle: # New time in file stamp, after a dither and reacq
+                    dither_times.append(astropy.time.Time(pointing_table_more.columns['time'][0], format='mjd') )
+                    last_gs_fn_middle = fn_middle
+                    if verbose:
+                        print(f"Dither before {gs_fn} at {dither_times[-1].iso}")
+                # We have to compute means per segment, since it's not meaningful to combine across dithers
+                mask = centroid_table_more.columns['bad_centroid_dq_flag'] == 'GOOD'
+                xmean = np.nanmean(centroid_table_more[mask]['guide_star_position_x'])
+                ymean = np.nanmean(centroid_table_more[mask]['guide_star_position_y'])
+                centroid_table_more['guide_star_position_x'] -= xmean
+                centroid_table_more['guide_star_position_y'] -= ymean
+
             pointing_table = astropy.table.vstack([pointing_table, pointing_table_more], metadata_conflicts='silent')
             centroid_table = astropy.table.vstack([centroid_table, centroid_table_more], metadata_conflicts='silent')
             display_gs_fn = os.path.basename(gs_fn)[0:33]+ "-seg*_cal.fits"
-
+    if visit_mode:
+        display_gs_fn = f"All (n={len(gs_fns)}) guidestar files for {visitid}"
 
     mask = centroid_table.columns['bad_centroid_dq_flag'] == 'GOOD'
 
@@ -195,8 +289,8 @@ def guiding_performance_plot(sci_filename, verbose=True, save=False, yrange=None
     ptimes = astropy.time.Time(pointing_table.columns['time'], format='mjd')
 
     # Compute the mean X and Y positions
-    xmean = centroid_table[mask]['guide_star_position_x'].mean()
-    ymean = centroid_table[mask]['guide_star_position_y'].mean()
+    xmean = np.nanmean(centroid_table[mask]['guide_star_position_x'])
+    ymean = np.nanmean(centroid_table[mask]['guide_star_position_y'])
 
 
     # Create Plots
@@ -206,52 +300,93 @@ def guiding_performance_plot(sci_filename, verbose=True, save=False, yrange=None
     max_time = np.max([ptimes.plot_date.max(), ctimes.plot_date.max()])
     dtime = max_time - min_time
 
-    # Find the subset of centroid data from during that exposure
-    ptimes_during_exposure = (t_beg < ptimes ) & (ptimes < t_end)
-    ctimes_during_exposure = (t_beg < ctimes[mask] ) & (ctimes[mask] < t_end)
+    if not visit_mode:
+        # Find the subset of centroid data from during that exposure
+        ptimes_during_exposure = (t_beg < ptimes ) & (ptimes < t_end)
+        ctimes_during_exposure = (t_beg < ctimes[mask] ) & (ctimes[mask] < t_end)
 
 
     for i in range(3):
         axes[i].xaxis.axis_date()
         axes[i].set_xlim(min_time -0.01*dtime, max_time+0.01*dtime)
 
-    axes[0].set_title(f"Guiding during {os.path.basename(sci_filename)}", fontweight='bold', fontsize=18)
+    if visit_mode:
+        axes[0].set_title(f"Guiding during {visitid}", fontweight='bold', fontsize=18)
+        if len(dither_times)>0:
+            axes[1].text(0.5, 0.05, "Centroids offsets shown are relative to the mean position within each dither",
+                         transform=axes[1].transAxes, horizontalalignment='center')
+    else:
+        axes[0].set_title(f"Guiding during {os.path.basename(sci_filename)}", fontweight='bold', fontsize=18)
 
-    axes[0].semilogy(ptimes.plot_date, pointing_table.columns['jitter'], alpha=1, color='C0')
+    axes[0].semilogy(ptimes.plot_date, pointing_table.columns['jitter'], alpha=0.9, color='C0')
     axes[0].set_ylim(1e-2, 1e3)
     axes[0].set_ylabel("Jitter\n[mas]", fontsize=18)
     axes[0].text(0.01, 0.95, display_gs_fn, fontsize=16, transform=axes[0].transAxes, verticalalignment='top')
-    axes[0].text(t_beg.plot_date, 20,
-                 f"    mean jitter: {pointing_table.columns['jitter'][ptimes_during_exposure].mean():.2f} mas", color='green')
 
-
-
-    axes[0].axvspan(t_beg.plot_date, t_end.plot_date, color='green', alpha=0.15)
-    axes[0].text(t_beg.plot_date, 50, " Exposure", color='green')
-    axes[0].text(ptimes.plot_date.min(), 100, " Guiding Start", color='C0')
+    axes[0].text(ptimes.plot_date.min(), 100, " Guiding Start", color='C0', clip_on=True)
     axes[0].text(ptimes.plot_date.max(), 100, "Guiding End ", color='C0',
-                horizontalalignment='right')
+                horizontalalignment='right', clip_on = True)
 
 
-    axes[1].plot(ctimes[mask].plot_date, centroid_table[mask]['guide_star_position_x']-xmean, label='X Centroids', color='C1')
-    axes[1].plot(ctimes[mask].plot_date, centroid_table[mask]['guide_star_position_y']-ymean, label='Y Centroids', color='C4')
+    axes[1].plot(ctimes[mask].plot_date, centroid_table[mask]['guide_star_position_x']-xmean, label='X Centroids', color='C1', alpha=0.7)
+    axes[1].plot(ctimes[mask].plot_date, centroid_table[mask]['guide_star_position_y']-ymean, label='Y Centroids', color='C4', alpha=0.7)
     axes[1].legend()
-    axes[1].axvspan(t_beg.plot_date, t_end.plot_date, color='green', alpha=0.15)
     axes[1].set_ylabel("GS centroid offsets\n[arcsec]", fontsize=18)
     axes[1].axhline(0, ls=":", color='gray')
     if yrange is not None:
         axes[1].set_ylim(*yrange)
 
     axes[2].plot(ctimes.plot_date, mask, label='GOOD Centroids', color='C1')
+    if not visit_mode:
+        axes[0].text(t_beg.plot_date, 20,
+                 f"    mean jitter: {pointing_table.columns['jitter'][ptimes_during_exposure].mean():.2f} mas", color='green')
+        axes[0].text(t_beg.plot_date, 50, " Exposure", color='green')
 
-    axes[2].axvspan(t_beg.plot_date, t_end.plot_date, color='green', alpha=0.15)
+        axes[0].axvspan(t_beg.plot_date, t_end.plot_date, color='green', alpha=0.15)
+        axes[1].axvspan(t_beg.plot_date, t_end.plot_date, color='green', alpha=0.15)
+        axes[2].axvspan(t_beg.plot_date, t_end.plot_date, color='green', alpha=0.15)
+    else:
+        for dithertime in dither_times:
+           for ax in axes:
+                ax.axvline(dithertime.plot_date, color='black', ls='--')
+           axes[2].text(dithertime.plot_date, -0.25, 'Dither', rotation=90, clip_on=True)
+
+        import misc_jwst.mast
+        exposure_table = misc_jwst.mast.get_visit_exposure_times(visitid)
+        already_plotted_exptimes = set()
+        for row in exposure_table:
+            if row['date_beg_mjd'].plot_date in already_plotted_exptimes:
+                continue
+            if verbose:
+                print(f"Exposure {row['filename']} began at {row['date_beg_mjd'].iso}")
+
+            for ax in axes:
+                ax.axvspan(row['date_beg_mjd'].plot_date, row['date_end_mjd'].plot_date, color='green', alpha=0.15)
+            axes[2].text(row['date_beg_mjd'].plot_date, -0.25, row['filename'], color='green', rotation=10, fontsize='small',
+                         clip_on=True)
+            already_plotted_exptimes.add(row['date_beg_mjd'].plot_date)
+
+
     axes[2].set_ylabel("Centroid Quality Flag\n", fontsize=18)
     axes[2].set_yticks((0,1))
     axes[2].set_ylim(-0.5, 1.5)
     axes[2].set_yticklabels(['BAD', 'GOOD'])
 
+    if time_range_fraction:
+        tl = axes[0].get_xlim()
+        t_duration = tl[1] - tl[0]
+        for ax in axes:
+            ax.set_xlim(tl[0] + time_range_fraction[0]*t_duration,
+                        tl[0] + time_range_fraction[1]*t_duration)
 
-    outname = f'guidingplot_{gs_fn_base}.pdf'
+
+
+
+
+    if visit_mode:
+        outname = f'guidingplot_{visitid}.pdf'
+    else:
+        outname = f'guidingplot_{gs_fn_base}.pdf'
 
     if save:
         plt.savefig(outname)
