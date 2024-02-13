@@ -313,7 +313,7 @@ def guiding_performance_plot(sci_filename=None, visitid=None, verbose=True, save
     if visit_mode:
         axes[0].set_title(f"Guiding during {visitid}", fontweight='bold', fontsize=18)
         if len(dither_times)>0:
-            axes[1].text(0.5, 0.05, "Centroids offsets shown are relative to the mean position within each dither",
+            axes[1].text(0.5, 0.05, "Centroids offsets shown are relative to the mean position within each guider file (usually per dither)",
                          transform=axes[1].transAxes, horizontalalignment='center')
     else:
         axes[0].set_title(f"Guiding during {os.path.basename(sci_filename)}", fontweight='bold', fontsize=18)
@@ -330,7 +330,7 @@ def guiding_performance_plot(sci_filename=None, visitid=None, verbose=True, save
 
     axes[1].plot(ctimes[mask].plot_date, centroid_table[mask]['guide_star_position_x']-xmean, label='X Centroids', color='C1', alpha=0.7)
     axes[1].plot(ctimes[mask].plot_date, centroid_table[mask]['guide_star_position_y']-ymean, label='Y Centroids', color='C4', alpha=0.7)
-    axes[1].legend()
+    axes[1].legend(loc='lower right')
     axes[1].set_ylabel("GS centroid offsets\n[arcsec]", fontsize=18)
     axes[1].axhline(0, ls=":", color='gray')
     if yrange is not None:
