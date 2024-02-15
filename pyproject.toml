@@ -3,3 +3,20 @@ requires = ["setuptools",
             "setuptools_scm",
             "wheel"]
 build-backend = "setuptools.build_meta"
+
+[project]
+name = "misc_jwst"
+description = "Miscellaneous JWST related utilities, minor analyses tools, and catch-all for code reuse."
+authors = [{name = "Marshall Perrin, and Association of Universities for Research in Astronomy", email = "mperrin@stsci.edu"}]
+license = {file = "LICENSE.md"}
+dynamic = ["version"]
+readme = "README.rst"
+
+requires-python = ">=3.9"
+
+[tool.setuptools_scm]
+write_to = "misc_jwst/version.py"
+
+
+[project.scripts]
+jwstops-latest = "misc_jwst.command_line:jwstops_latest"

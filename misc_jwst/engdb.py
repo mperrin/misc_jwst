@@ -75,7 +75,7 @@ def visit_start_end_times(eventlog, visitid=None, return_table=False, verbose=Tr
     in_visit = False
     in_selected_visit = False
 
-    outputs = {k: [] for k in ['visitid', 'visitstart', 'visitend', 'duration']}
+    outputs = {k: [] for k in ['visitid', 'visitstart', 'visitend', 'duration', 'notes']}
 
     output = []
     output.append('Visit ID     | Visit Start             | Visit End'
@@ -92,17 +92,19 @@ def visit_start_end_times(eventlog, visitid=None, return_table=False, verbose=Tr
                 # for debugging:
                 #print("**", value)
                 in_visit = True
+                note = ""
             elif msg[-5:] == 'ENDED' and vid!='':
                 if vid != msg.split()[1]:
                     output.append(f"Unexpected end for visit {msg} instead of {vid}")
                 vend = 'T'.join(time.split())[:-3]
                 dur = datetime.fromisoformat(vend) - datetime.fromisoformat(vstart)
                 output.append(f'{vid} | {vstart:23} | {vend:23} | '
-                      f' {round(dur.total_seconds()):6}  |')
+                      f' {round(dur.total_seconds()):6}  | {note}')
                 outputs['visitid'].append(vid)
                 outputs['visitstart'].append(vstart)
                 outputs['visitend'].append(vend)
                 outputs['duration'].append(dur.total_seconds())
+                outputs['notes'].append(note)
 
                 in_visit = False
         elif msg[:31] == f'Script terminated: {vid}':
@@ -114,6 +116,26 @@ def visit_start_end_times(eventlog, visitid=None, return_table=False, verbose=Tr
                 output.append(f'{vid} | {vstart:23} | {vend:23} | '
                       f' {round(dur.total_seconds()):6}  | {note}')
                 in_visit = False
+        else:
+            if in_visit:
+                # check for visit guide failures
+                if 'FGS fixed target guide star acquisition failed on all attempts, exit FGSVERMAIN' in msg:
+                    #print(f"FGS ID+Acq failed on all attempts for {vid}")
+                    note = "SKIPPED. FGS ID failed all attempts"
+    else:
+        if in_visit:
+            output.append(f'{vid} | {vstart:23} | ongoing            | '
+                  f' ongoing  | as of end of log')
+            outputs['visitid'].append(vid)
+            outputs['visitstart'].append(vstart)
+            outputs['visitend'].append('T'.join(time.split())[:-3])
+            outputs['duration'].append(-1)
+            outputs['notes'].append('Still ongoing at end of available log')
+
+
+
+
+
     if visitid and verbose:
         print(output[0])
         for row in output:
