@@ -23,7 +23,10 @@ def set_params(parameters):
 
 
 def jwst_keywords_query(instrument, columns=None, all_columns=False, verbose=False,  **kwargs):
+    """JWST keyword query
 
+    See https://mast.stsci.edu/api/v0/_jwst_inst_keywd.html for keyword field reference
+    """
     svc_table = {'MIRI':'Mast.Jwst.Filtered.Miri',
                  'NIRCAM': 'Mast.Jwst.Filtered.NIRCam',
                  'NIRSPEC': 'Mast.Jwst.Filtered.NIRSpec',
@@ -62,6 +65,19 @@ def jwst_keywords_query(instrument, columns=None, all_columns=False, verbose=Fal
         print(f"Query returned {len(responsetable)} rows")
     if 'bstrtime' in columns:
         responsetable.sort(keys='bstrtime')
+
+
+    # Some date fields are returned (for database format reasons) as strings, containing 'Date' then an integer
+    # giving Unix time in milliseconds. Convert these to astropy times. 
+    # This format is not clearly documented, but was reported by MAST archive help desk.
+    date_fields = ['date_beg', 'date_end', 'date_obs']   # This is probably not a complete list of which fields to apply this to
+    for field_name in date_fields:
+        if field_name in columns:
+            unix_date_strings = [s[6:-2] for s in responsetable[field_name].value] #  these are strings like '/Date(1679095623534)/'; extract just the numeric part
+            times = astropy.time.Time(np.asarray(unix_date_strings, float)/1000, format='unix')
+            times.format = 'iso'
+            responsetable[field_name] = astropy.table.Column(times)
+
 
     # Add the initial V to visit ID.
     if 'visit_id' in columns:
