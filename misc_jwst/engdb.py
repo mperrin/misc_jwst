@@ -61,10 +61,12 @@ def get_ictm_event_log(startdate='2022-02-01', enddate=None, mast_api_token=None
     else:
         return lines
 
+
 def pretty_print_event_log(eventlog):
     # Only works on eventtable as list; unnecessary for Table format
     for value in reader(eventlog, delimiter=',', quotechar='"'):
         print(f"{value[0][0:22]:20s}\t {value[2]}")
+
 
 def visit_start_end_times(eventlog, visitid=None, return_table=False, verbose=True):
     """ Find visit start and end times for all visits
@@ -154,7 +156,6 @@ def visit_start_end_times(eventlog, visitid=None, return_table=False, verbose=Tr
 
 
 def extract_oss_event_msgs_for_visit(eventlog, selected_visit_id, ta_only=False, verbose=False, return_text=True):
-
     # parse response (ignoring header line) and print new event messages
     vid = ''
     in_selected_visit = False
@@ -261,9 +262,7 @@ def eventtable_extract_visit(event_table, selected_visit_id, verbose=False):
     return event_table[istart:istop+1]
 
 
-
 def visit_script_durations(event_table, selected_visit_id, verbose=True, return_table=False):
-
     visittable = eventtable_extract_visit(event_table, selected_visit_id)
 
 
@@ -380,8 +379,6 @@ def main_combined():
         event_table = eventlog_parse_to_table(eventlog)
 
         visit_script_durations(event_table, args.visit_id)
-
-
 
 
 def main_full():
