@@ -90,6 +90,7 @@ def jwst_keywords_query(instrument, columns=None, all_columns=False, verbose=Fal
 
     return responsetable
 
+
 def visit_which_instrument(visitid):
     """Which instrument did a visit use?
 
@@ -108,6 +109,7 @@ def visit_which_instrument(visitid):
         for inst in instruments:
             if len(jwst_keywords_query(inst, visit_id=visitid[1:])) > 0:
                 return inst
+
 
 def query_visit_time(visitid, verbose=False):
     """ Find start and end time of a visit
@@ -191,8 +193,6 @@ def query_program_visit_times(program,  verbose=False):
     #visit_times = np.asarray(visit_times)
     return astropy.table.Table([vids, starts, ends],
                                names=('visit_id', 'start_mjd', 'end_mjd'))
-
-
 
 
 def _query_program_visit_times_by_inst(program, instrument, verbose=False):
