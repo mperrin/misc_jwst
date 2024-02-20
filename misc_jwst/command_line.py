@@ -25,7 +25,8 @@ def jwstops_latest(lookback=48*u.hour):
 
 
 def get_schedule_table():
-    
+    """ Get table of current observing schedules, from web-scraping the PPS postings
+    """
     # Get and parse the page listing all available observing schedules. Obtain the URL of the most recent. 
     r = requests.get('https://www.stsci.edu/jwst/science-execution/observing-schedules')
     soup = BeautifulSoup(r.content, features="lxml")
@@ -55,7 +56,8 @@ def get_schedule_table():
     return sched_table
 
 def display_schedule(sched_table, time_range=2*u.day):
-
+    """ Print schedule table to text, with pretty formatting
+    """
 
     short_modes = {'MIRI Medium Resolution Spectroscopy': 'MIRI MRS',
                    'MIRI Low Resolution Spectroscopy': 'MIRI LRS',
