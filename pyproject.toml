@@ -20,3 +20,5 @@ write_to = "misc_jwst/version.py"
 
 [project.scripts]
 jwstops-latest = "misc_jwst.command_line:jwstops_latest"
+jwstops-schedule = "misc_jwst.command_line:jwstops_schedule"
+jwstops = "misc_jwst.command_line:jwstops_main"

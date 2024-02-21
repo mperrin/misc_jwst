@@ -4,6 +4,8 @@ from . import engdb
 import requests
 from bs4 import BeautifulSoup
 
+import argparse
+
 
 
 def jwstops_latest(lookback=48*u.hour):
@@ -100,4 +102,50 @@ def display_schedule(sched_table, time_range=2*u.day):
 def jwstops_schedule():
     sched_table = get_schedule_table()
     display_schedule(sched_table)
+
+def jwstops_visitlog(visitid, lookback=7*u.day):
+    print(f"Retrieving OSS visit log for {visitid}...")
+    now = astropy.time.Time.now()
+    start_time = now - lookback
+
+    log = engdb.get_ictm_event_log(startdate=start_time)
+
+    visit_table = engdb.eventtable_extract_visit(log, visitid, verbose=False)
+    for row in visit_table:
+        print(row['Time'][:-4], '\t', row['Message'])
+
+def jwstops_durations(visitid, lookback=7*u.day):
+    print(f"Retrieving OSS visit log for {visitid}...")
+    now = astropy.time.Time.now()
+    start_time = now - lookback
+
+    log = engdb.get_ictm_event_log(startdate=start_time)
+
+    visit_table = engdb.visit_script_durations(log, visitid)
+
+
+def jwstops_main():
+    parser = argparse.ArgumentParser(
+        description='JWST Ops tools'
+    )
+    #parser.add_argument('command', metavar='command', type=str, help='latest, schedule')
+    parser.add_argument('-l', '--latest',  action='store_true', help='show latest (most recent) visits for which OSS logs are available')
+    parser.add_argument('-s', '--schedule',  action='store_true', help='show OSS observing plan schedule')
+    parser.add_argument('-v', '--visitlog',  help='retrieve OSS visit log for this visit (within previous week).')
+    parser.add_argument('-d', '--durations',  help='retrieve OSS visit event durations for this visit (within previous week).')
+
+    args = parser.parse_args()
+
+    if args.latest:
+        jwstops_latest()
+    if args.schedule:
+        jwstops_schedule()
+    if args.visitlog:
+        jwstops_visitlog(args.visitlog)
+    if args.durations:
+        jwstops_durations(args.durations)
+
+
+
+
 
