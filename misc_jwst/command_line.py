@@ -1,5 +1,6 @@
 import astropy.time
 import astropy.units as u
+import numpy as np
 from . import engdb
 import requests
 from bs4 import BeautifulSoup
@@ -71,6 +72,7 @@ def display_schedule(sched_table, time_range=2*u.day):
                    'NIRCam Coronagraphic Imaging': 'NIRCam Coron',
                    'NIRSpec Fixed Slit Spectroscopy': 'NRS FS',
                    'NIRCam Engineering Imaging': 'NRC Eng Img',
+                   'NIRISS Single-Object Slitless Spectroscopy': 'NIRISS SOSS',
                    'WFSC NIRCam Fine Phasing': "WFSC",
                   }
 
@@ -124,6 +126,26 @@ def jwstops_durations(visitid, lookback=7*u.day):
     visit_table = engdb.visit_script_durations(log, visitid)
 
 
+def jwstops_deltas(lookback=48*u.hour):
+    now = astropy.time.Time.now()
+    start_time = now - lookback
+    log = engdb.get_ictm_event_log(startdate=start_time)
+    visit_table = engdb.visit_start_end_times(log, verbose=False, return_table=True)
+    visit_table['VISIT ID'] = [f"{int(v[1:6])}:{int(v[6:9])}:{int(v[9:12])}" for v in list(visit_table['visitid'].value)]
+
+    schedule = get_schedule_table()
+
+    print(f"\nVisits within the previous {lookback}:\n")
+    print(f"Visit ID\tStart time (UT)     \tSched. Start time (UT)\tTime delta [hr]\tNotes")
+    for row in visit_table:
+        match_index = np.where(schedule['VISIT ID'] == row['VISIT ID'])[0][0] 
+        
+        sched_start_time = astropy.time.Time(schedule[match_index]['SCHEDULED START TIME'])
+        delta_time = row['visit_fgs_start'] - sched_start_time
+        
+        print(f"{row['VISIT ID']}\t{row['visit_fgs_start'].iso[:-4]}\t{sched_start_time.iso[:-4]}\t{delta_time.to_value(u.hour):+.2f}\t{row['notes']}")
+    print(f"\nTimes above refer to scheduled/actual start times of FGS guide star ID+acq for each visit.\nNegative means observatory ahead of schedule, positive is behind schedule.\n")
+
 def jwstops_main():
     parser = argparse.ArgumentParser(
         description='JWST Ops tools'
@@ -131,6 +153,7 @@ def jwstops_main():
     #parser.add_argument('command', metavar='command', type=str, help='latest, schedule')
     parser.add_argument('-l', '--latest',  action='store_true', help='show latest (most recent) visits for which OSS logs are available')
     parser.add_argument('-s', '--schedule',  action='store_true', help='show OSS observing plan schedule')
+    parser.add_argument('-t', '--time_deltas',  action='store_true', help='show timing delta between schedule and actual visit times.')
     parser.add_argument('-v', '--visitlog',  help='retrieve OSS visit log for this visit (within previous week).')
     parser.add_argument('-d', '--durations',  help='retrieve OSS visit event durations for this visit (within previous week).')
 
@@ -144,6 +167,9 @@ def jwstops_main():
         jwstops_visitlog(args.visitlog)
     if args.durations:
         jwstops_durations(args.durations)
+    if args.time_deltas:
+        jwstops_deltas()
+
 
 
 

@@ -71,13 +71,23 @@ def pretty_print_event_log(eventlog):
 def visit_start_end_times(eventlog, visitid=None, return_table=False, verbose=True):
     """ Find visit start and end times for all visits
 
+    Note, 'visitstart' is the start time of the SLEW before a visit.
+    'visit_fgs_start' gives the time of when the FGSMAIN ID/Acq/Track/FG began;
+      this corresponds to the start time column in the public schedule on stsci.edu
+
+    Parameters
+    ----------
+    return_table : bool
+        Return astropy table of the outputs
+
+
     """
     # parse response (ignoring header line) and print new event messages
     vid = ''
     in_visit = False
     in_selected_visit = False
 
-    outputs = {k: [] for k in ['visitid', 'visitstart', 'visitend', 'duration', 'notes']}
+    outputs = {k: [] for k in ['visitid', 'visitstart', 'visit_fgs_start', 'visitend', 'duration', 'notes']}
 
     output = []
     output.append('Visit ID     | Visit Start             | Visit End'
@@ -90,6 +100,7 @@ def visit_start_end_times(eventlog, visitid=None, return_table=False, verbose=Tr
                     output.append(f'*** Missing end for visit {vid}')
                 vstart = 'T'.join(time.split())[:-3]
                 vid = msg.split()[1]
+                vid_fgs_start = None
 
                 # for debugging:
                 #print("**", value)
@@ -104,6 +115,7 @@ def visit_start_end_times(eventlog, visitid=None, return_table=False, verbose=Tr
                       f' {round(dur.total_seconds()):6}  | {note}')
                 outputs['visitid'].append(vid)
                 outputs['visitstart'].append(vstart)
+                outputs['visit_fgs_start'].append(str(vid_fgs_start))
                 outputs['visitend'].append(vend)
                 outputs['duration'].append(dur.total_seconds())
                 outputs['notes'].append(note)
@@ -124,12 +136,19 @@ def visit_start_end_times(eventlog, visitid=None, return_table=False, verbose=Tr
                 if 'FGS fixed target guide star acquisition failed on all attempts, exit FGSVERMAIN' in msg:
                     #print(f"FGS ID+Acq failed on all attempts for {vid}")
                     note = "SKIPPED. FGS ID failed all attempts"
+                elif 'MIRI target locate failed' in msg:
+                    note = 'MIRI target acq failed'
+                elif 'NIRCam target locate failed' in msg:
+                    note = 'NIRCam target acq failed'
+                elif (vid_fgs_start is None) and ('Script activated' in msg) and msg.endswith('FGSMAIN'):
+                    vid_fgs_start = 'T'.join(time.split())[:-3]
     else:
         if in_visit:
             output.append(f'{vid} | {vstart:23} | ongoing            | '
                   f' ongoing  | as of end of log')
             outputs['visitid'].append(vid)
             outputs['visitstart'].append(vstart)
+            outputs['visit_fgs_start'].append(str(vid_fgs_start))
             outputs['visitend'].append('T'.join(time.split())[:-3])
             outputs['duration'].append(-1)
             outputs['notes'].append('Still ongoing at end of available log')
@@ -151,6 +170,7 @@ def visit_start_end_times(eventlog, visitid=None, return_table=False, verbose=Tr
         t = astropy.table.Table(list(outputs.values()), names = outputs.keys() )
         t['visitstart'] = astropy.time.Time(t['visitstart'])
         t['visitend'] = astropy.time.Time(t['visitend'])
+        t['visit_fgs_start'] = astropy.time.Time(t['visit_fgs_start'])
 
         return(t)
 
