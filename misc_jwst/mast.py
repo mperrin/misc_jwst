@@ -72,7 +72,7 @@ def jwst_keywords_query(instrument, columns=None, all_columns=False, verbose=Fal
     # This format is not clearly documented, but was reported by MAST archive help desk.
     date_fields = ['date_beg', 'date_end', 'date_obs']   # This is probably not a complete list of which fields to apply this to
     for field_name in date_fields:
-        if field_name in columns:
+        if field_name in responsetable.colnames :
             unix_date_strings = [s[6:-2] for s in responsetable[field_name].value] #  these are strings like '/Date(1679095623534)/'; extract just the numeric part
             times = astropy.time.Time(np.asarray(unix_date_strings, float)/1000, format='unix')
             times.format = 'iso'

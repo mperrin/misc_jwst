@@ -337,6 +337,12 @@ def guiding_performance_plot(sci_filename=None, visitid=None, verbose=True, save
         axes[1].set_ylim(*yrange)
 
     axes[2].plot(ctimes.plot_date, mask, label='GOOD Centroids', color='C1')
+    frac_good = mask.sum() / len(mask)
+    print(f'Fraction of good centroids: {frac_good}')
+    if frac_good < 0.95:
+        axes[2].text(0.5, 0.9, f"WARNING, {(1-frac_good)*100:.2f}% of guider centroids were BAD during this.",
+                     color='red', fontweight='bold', transform=axes[2].transAxes, horizontalalignment='center')
+
     if not visit_mode:
         axes[0].text(t_beg.plot_date, 20,
                  f"    mean jitter: {pointing_table.columns['jitter'][ptimes_during_exposure].mean():.2f} mas", color='green')
@@ -349,7 +355,7 @@ def guiding_performance_plot(sci_filename=None, visitid=None, verbose=True, save
         for dithertime in dither_times:
            for ax in axes:
                 ax.axvline(dithertime.plot_date, color='black', ls='--')
-           axes[2].text(dithertime.plot_date, -0.25, 'Dither', rotation=90, clip_on=True)
+           axes[2].text(dithertime.plot_date, -0.35, 'SAM', rotation=90, clip_on=True)
 
         import misc_jwst.mast
         exposure_table = misc_jwst.mast.get_visit_exposure_times(visitid)
@@ -565,7 +571,7 @@ def find_guiding_id_file(sci_filename=None, progid=None, obs=None, visit=1, verb
         products = list(set(fn))
         # If you want the uncals instead do this:
         #products = list(set([x.replace('_cal','_uncal') for x in fn]))
-    products.sort()
+        products.sort()
 
 
     if verbose:
@@ -575,6 +581,8 @@ def find_guiding_id_file(sci_filename=None, progid=None, obs=None, visit=1, verb
             print("   ", p)
 
 
+    if len(t) == 0:
+        return None
     outfiles = mast_retrieve_guiding_files(products)
 
     return outfiles
@@ -754,13 +762,17 @@ def show_all_gs_id_images(filenames):
         extra_ax.set_axis_off()
 
 
-def retrieve_and_display_id_images(sci_filename=None, progid=None, obs=None, visit=1, save=True, save_dpi=150):
+def retrieve_and_display_id_images(sci_filename=None, progid=None, obs=None, visit=1, visitid=None, save=True, save_dpi=150):
     """ Top-level routine to retrieve and display FGS ID images for a given visit
 
     You can specify the visit either by giving a science filename (in which case
     the metadata is read from the header) or directly supplying program ID, observation,
     and optionally visit number.
     """
+    if visitid is not None:
+        progid = int(visitid[1:6])
+        obs = int(visitid[6:9])
+        visit = int(visitid[9:12])
     filenames = find_guiding_id_file(sci_filename=sci_filename,
                                                       progid=progid, obs=obs, visit=visit)
 
