@@ -101,9 +101,10 @@ def display_schedule(sched_table, time_range=2*u.day):
     print('\n')
 
 
-def jwstops_schedule():
+def jwstops_schedule(time_range=48*u.hour):
+    print(f"Time range: {time_range}")
     sched_table = get_schedule_table()
-    display_schedule(sched_table)
+    display_schedule(sched_table, time_range=time_range)
 
 def jwstops_visitlog(visitid, lookback=7*u.day):
     print(f"Retrieving OSS visit log for {visitid}...")
@@ -139,12 +140,15 @@ def jwstops_deltas(lookback=48*u.hour):
     print(f"Visit ID\tStart time (UT)     \tSched. Start time (UT)\tTime delta [hr]\tNotes")
     for row in visit_table:
         match_index = np.where(schedule['VISIT ID'] == row['VISIT ID'])[0][0] 
-        
+
         sched_start_time = astropy.time.Time(schedule[match_index]['SCHEDULED START TIME'])
         delta_time = row['visit_fgs_start'] - sched_start_time
-        
+
         print(f"{row['VISIT ID']}\t{row['visit_fgs_start'].iso[:-4]}\t{sched_start_time.iso[:-4]}\t{delta_time.to_value(u.hour):+.2f}\t{row['notes']}")
-    print(f"\nTimes above refer to scheduled/actual start times of FGS guide star ID+acq for each visit.\nNegative means observatory ahead of schedule, positive is behind schedule.\n")
+    print(f"\nTimes above refer to scheduled/actual start times of FGS guide star ID+acq for each visit.\nNegative means observatory ahead of schedule, positive is behind schedule.")
+    latest_log_time = astropy.time.Time(log[-1]['Time'])
+    print(f"Latest available log message ends at {latest_log_time.isot[:-4]}  ({(now-latest_log_time).to_value(u.hour):.1f} hours ago)\n")
+
 
 def jwstops_main():
     parser = argparse.ArgumentParser(
@@ -156,19 +160,20 @@ def jwstops_main():
     parser.add_argument('-t', '--time_deltas',  action='store_true', help='show timing delta between schedule and actual visit times.')
     parser.add_argument('-v', '--visitlog',  help='retrieve OSS visit log for this visit (within previous week).')
     parser.add_argument('-d', '--durations',  help='retrieve OSS visit event durations for this visit (within previous week).')
+    parser.add_argument('-r', '--range',  default=48.0, help='Set time range in hours forward/back for displaying schedules. (default = 48 hours)')
 
     args = parser.parse_args()
 
     if args.latest:
-        jwstops_latest()
+        jwstops_latest(lookback=float(args.range)*u.hour)
     if args.schedule:
-        jwstops_schedule()
+        jwstops_schedule(time_range=float(args.range)*u.hour)
     if args.visitlog:
         jwstops_visitlog(args.visitlog)
     if args.durations:
         jwstops_durations(args.durations)
     if args.time_deltas:
-        jwstops_deltas()
+        jwstops_deltas(lookback=float(args.range)*u.hour)
 
 
 
