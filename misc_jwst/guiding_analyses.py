@@ -159,7 +159,7 @@ def find_relevant_guiding_file(sci_filename, verbose=True):
 
 
 @functools.lru_cache
-def find_visit_guiding_files(visitid, guidemode='FINEGUIDE', verbose=True):
+def find_visit_guiding_files(visitid, guidemode='FINEGUIDE', verbose=True, autodownload=True):
     """ Given a JWST visit id string, like 'V01234005001', retrieve all guiding data products
     for that visit from MAST. Files downloaded into current working directory.
 
@@ -168,18 +168,31 @@ def find_visit_guiding_files(visitid, guidemode='FINEGUIDE', verbose=True):
     progid = visitid[1:6]
     obs = visitid[6:9]
 
+    if guidemode.upper()=='ID':
+        exp_type = 'FGS_ID-IMAGE'
+    elif guidemode.upper()=='ACQ' or guidemode.upper()=='ACQ1':
+        exp_type = 'FGS_ACQ1'
+    elif guidemode.upper()=='ACQ2':
+        exp_type = 'FGS_ACQ2'
+    elif guidemode.upper() == 'TRACK':
+        exp_type = 'FGS_TRACK'
+    elif guidemode.upper() == 'FINEGUIDE':
+        exp_type = 'FGS_FINEGUIDE'
+    else:
+        raise ValueError(f"Unknown/invalid guidemode parameter: {guidemode}")
+
+
     # Set up the query
     keywords = {
     'program': [progid]
     ,'observtn': [obs]
-    ,'exp_type': ['FGS_'+guidemode]
+    ,'exp_type': [exp_type]
     }
 
     params = {
         'columns': '*',
         'filters': set_params(keywords)
         }
-
 
     # Run the web service query. This uses the specialized, lower-level webservice for the
     # guidestar queries: https://mast.stsci.edu/api/v0/_services.html#MastScienceInstrumentKeywordsGuideStar
@@ -196,7 +209,10 @@ def find_visit_guiding_files(visitid, guidemode='FINEGUIDE', verbose=True):
         products = list(set(fn))
         # If you want the uncals instead do this:
         #products = list(set([x.replace('_cal','_uncal') for x in fn]))
-    products.sort()
+        products.sort()
+    else:
+        print("Query returned no guiding files")
+        return None
 
     if verbose:
         print(f"For visit: {visitid}")
@@ -204,9 +220,42 @@ def find_visit_guiding_files(visitid, guidemode='FINEGUIDE', verbose=True):
         for p in products:
             print("   ", p)
 
-    outfiles = mast_retrieve_guiding_files(products)
+    if autodownload:
+        outfiles = mast_retrieve_guiding_files(products)
+        return outfiles
+    else:
+        return products
 
-    return outfiles
+
+
+@functools.lru_cache
+def find_guiding_id_file(sci_filename=None, guidemode='ID', progid=None, obs=None, visit=1, visitid=None, verbose=True,
+        autodownload=True):
+    """ Given a filename of a JWST science file, retrieve the relevant guiding ID data product.
+    (or Acq data product)
+    This uses FITS keywords in the science header to determine the time period and guide mode,
+    and then retrieves the file from MAST
+
+    """
+
+    if sci_filename is not None:
+        sci_hdul = fits.open(sci_filename)
+        progid_str = sci_hdul[0].header['PROGRAM']
+        obs_str = sci_hdul[0].header['OBSERVTN']
+        visit_str = sci_hdul[0].header['VISIT_ID']
+    elif visitid is not None:
+        progid_str = visitid[1:6]
+        obs_str = visitid[6:9]
+        visit_str = visitid[1:12]
+    elif progid is None or obs is None or visit is None:
+        raise RuntimeError("You must supply either the sci_filename parameter, or visitid, or both progid and obs (optionally also visit)")
+    else:
+        progid_str = f'{progid:05d}'
+        obs_str = f'{obs:03d}'
+        visit_str = f'{progid:05d}{obs:03d}{visit:03d}'
+
+    return find_visit_guiding_files(visitid='V'+visit_str, guidemode='ID')
+
 
 
 def guiding_performance_plot(sci_filename=None, visitid=None, verbose=True, save=False, yrange=None,
@@ -518,74 +567,7 @@ def guiding_performance_jitterball(sci_filename, fov_size = 8, nbins=50, verbose
         if verbose:
             print(f' ==> {outname}')
 
-@functools.lru_cache
-def find_guiding_id_file(sci_filename=None, progid=None, obs=None, visit=1, verbose=True):
-    """ Given a filename of a JWST science file, retrieve the relevant guiding ID data product.
-    This uses FITS keywords in the science header to determine the time period and guide mode,
-    and then retrieves the file from MAST
 
-    """
-
-
-    if sci_filename is not None:
-        sci_hdul = fits.open(sci_filename)
-
-        progid_str = sci_hdul[0].header['PROGRAM']
-        obs_str = sci_hdul[0].header['OBSERVTN']
-        visit_str = sci_hdul[0].header['VISIT_ID']
-    elif progid is None or obs is None or visit is None:
-        raise RuntimeError("You must supply either the sci_filename parameter, or both progid and obs (optionally also visit)")
-    else:
-        progid_str = f'{progid:05d}'
-        obs_str = f'{obs:03d}'
-        visit_str = f'{progid:05d}{obs:03d}{visit:03d}'
-
-
-
-    # Set up the query
-    keywords = {
-    'program': [progid_str]
-    ,'observtn': [obs_str]
-    ,'visit_id': [visit_str]
-    ,'exp_type': ['FGS_ID-IMAGE']
-    }
-
-    params = {
-        'columns': '*',
-        'filters': set_params(keywords)
-        }
-
-
-    # Run the web service query. This uses the specialized, lower-level webservice for the
-    # guidestar queries: https://mast.stsci.edu/api/v0/_services.html#MastScienceInstrumentKeywordsGuideStar
-
-    service = 'Mast.Jwst.Filtered.GuideStar'
-    t = Mast.service_request(service, params)
-
-
-    if len(t) > 0:
-        # Ensure unique file names, should any be repeated over multiple observations (e.g. if parallels):
-        fn = list(set(t['fileName']))
-        # Set of derived Observation IDs:
-
-        products = list(set(fn))
-        # If you want the uncals instead do this:
-        #products = list(set([x.replace('_cal','_uncal') for x in fn]))
-        products.sort()
-
-
-    if verbose:
-        print(f"For science data file: {sci_filename}")
-        print("Found guiding ID image files:")
-        for p in products:
-            print("   ", p)
-
-
-    if len(t) == 0:
-        return None
-    outfiles = mast_retrieve_guiding_files(products)
-
-    return outfiles
 
 
 
@@ -669,7 +651,7 @@ def display_one_id_image(filename, destripe = True, smooth=True, ax=None,
     #ax.yaxis.set_ticks([])
 
     if show_metadata:
-        ax.text(0.01, 0.99, f'{model.meta.instrument.detector}\nGS index: {model.meta.guidestar.gs_order}',
+        ax.text(0.01, 0.99, f'{model.meta.instrument.detector}\nGS index: {model.meta.guidestar.gs_order}\n{model.meta.observation.date_beg[:-4]}',
                 color='yellow',
                 transform=ax.transAxes,
                 verticalalignment='top')
@@ -729,8 +711,90 @@ def display_one_id_image(filename, destripe = True, smooth=True, ax=None,
     if return_model:
         return model
 
-def show_all_gs_id_images(filenames):
-    """Show a set of GS ID images, notionally all from the same visit
+def display_one_guider_image(filename,  ax=None, use_dq=False,
+                         show_metadata=True, count=0,
+                         orientation='sci', return_model=False):
+    """Display a JWST Guiding Acq image
+
+    Displays on a asinh stretch
+
+    Parameters
+    ----------
+    orientation : 'sci' or 'raw':
+        'sci' puts science frame 0,0 at lower left, like MAST output products seen in DS9
+        'raw' puts detetor raw frame 0,0 at upper left, like the FGS DHAS tool's plots
+
+    return_model : bool
+        Optional, return the image model if you want to do some further image manipulations
+        (for efficiency to avoid reloading it multiple times)
+    """
+
+    model = jwst.datamodels.open(filename)
+
+
+    if model.data.ndim == 3 and 'track' in filename:
+        # The star location in track images may move over time, by design.
+        # So just take and display one slice here, rather than trying to average over many
+        im = model.data[0]
+    elif model.data.ndim == 3 and 'track' not in filename:
+        # for fine guide images we can average over time, generally  (*small caveat for SGD subpix dithers)
+
+        im = model.data.mean(axis=0)
+    else:
+        im = model.data
+    dq = model.dq
+
+    if ax is None:
+        ax = plt.gca()
+
+    if orientation=='raw':
+        # Display like in raw detector orientation, consistent with usage on-board and in FGS DHAS analyses
+        if model.meta.instrument.detector=='GUIDER2':
+            im = im.transpose()
+            im = im[::-1]
+            dq = dq.transpose()
+            dq = dq[::-1]
+        else:
+            im = np.rot90(im)
+            im = im[:, ::-1] # maybe??
+            dq = np.rot90(dq)
+            dq = dq[:, ::-1]
+        origin='upper' # Argh, the FGS DHAS diagnostic plots put 0,0 at the UPPER left
+    else:
+        origin='lower'
+
+    mean, median, sigma = astropy.stats.sigma_clipped_stats(im, )
+
+    norm = matplotlib.colors.AsinhNorm(vmin = median-sigma, vmax=im.max(), linear_width=im.max()/1e3)
+
+    ax.imshow(im, norm=norm, origin=origin)
+
+    if use_dq:
+        bpmask = np.zeros_like(im, float) + np.nan
+        bpmask[(dq & 1)==1] = 1
+        ax.imshow(bpmask, vmin=0, vmax=1.5, cmap=matplotlib.cm.inferno, origin=origin)
+
+    ax.set_title(os.path.basename(filename))
+    #ax.xaxis.set_ticks([])
+    #ax.yaxis.set_ticks([])
+
+    if show_metadata:
+        ax.text(0.01, 0.99, f'{model.meta.instrument.detector}\nGS index: {model.meta.guidestar.gs_order}\n{model.meta.observation.date_beg[:-4]}',
+                color='yellow',
+                transform=ax.transAxes,
+                verticalalignment='top')
+        if orientation=='raw':
+            ax.text(0.99, 0.99, f'detector raw orientation',
+                color='yellow',
+                transform=ax.transAxes,
+                verticalalignment='top', horizontalalignment='right')
+
+    if return_model:
+        return model
+
+
+def show_all_gs_images(filenames, guidemode='ID'):
+    """Show a set of GS ID/Acq images, notionally all from the same visit
 
     Displays a grid of plots up to 3x3 for the 3 candidates times 3 attempts each
 
@@ -754,7 +818,12 @@ def show_all_gs_id_images(filenames):
 
 
     for i, filename in enumerate(filenames):
-        display_one_id_image(filename, ax=axesf[i], orientation='raw', count=i)
+        if guidemode=='ID':
+            display_one_id_image(filename, ax=axesf[i], orientation='raw', count=i)
+        else:
+            display_one_guider_image(filename, ax=axesf[i], count=i)
+
+
         if np.mod(i,3):
             axesf[i].set_yticklabels([])
 
@@ -769,6 +838,11 @@ def retrieve_and_display_id_images(sci_filename=None, progid=None, obs=None, vis
     the metadata is read from the header) or directly supplying program ID, observation,
     and optionally visit number.
     """
+    # user interface convenience - infer whether the provided string is a visit id automatically
+    if sci_filename.startswith('V') and visitid is None:
+        visitid = sci_filename
+        sci_filename = None
+
     if visitid is not None:
         progid = int(visitid[1:6])
         obs = int(visitid[6:9])
@@ -776,7 +850,7 @@ def retrieve_and_display_id_images(sci_filename=None, progid=None, obs=None, vis
     filenames = find_guiding_id_file(sci_filename=sci_filename,
                                                       progid=progid, obs=obs, visit=visit)
 
-    show_all_gs_id_images(filenames)
+    show_all_gs_images(filenames)
     visit_id = fits.getheader(filenames[0],ext=0)['VISIT_ID']
     fig = plt.gcf()
     fig.suptitle(f"FGS ID in V{visit_id}", fontsize=16, fontweight='bold')
@@ -785,6 +859,37 @@ def retrieve_and_display_id_images(sci_filename=None, progid=None, obs=None, vis
         outname = f'V{visit_id}_ID_images.pdf'
         plt.savefig(outname, dpi=save_dpi, transparent=True)
         print(f"Output saved to {outname}")
+
+
+def retrieve_and_display_guider_images(visitid=None, progid=None, obs=None, visit=1, guidemode='ACQ1', save=True, save_dpi=150):
+    """ Top-level routine to retrieve and display FGS Acq/Track/Fine Guide images for a given visit
+
+    You can specify the visit either by giving a science filename (in which case
+    the metadata is read from the header) or directly supplying program ID, observation,
+    and optionally visit number.
+
+    Parameters
+    ----------
+    guidemode : str
+        'ACQ1' or 'ACQ2' or 'TRACK' or 'FINEGUIDE'
+    """
+    if visitid is not None:
+        progid = int(visitid[1:6])
+        obs = int(visitid[6:9])
+        visit = int(visitid[9:12])
+
+    filenames = find_visit_guiding_files(visitid=visitid, guidemode=guidemode,)
+
+    show_all_gs_images(filenames, guidemode=guidemode)
+    visit_id = fits.getheader(filenames[0],ext=0)['VISIT_ID']
+    fig = plt.gcf()
+    fig.suptitle(f"FGS {guidemode} in V{visit_id}", fontsize=16, fontweight='bold')
+
+    if save:
+        outname = f'V{visit_id}_{guidemode}_images.pdf'
+        plt.savefig(outname, dpi=save_dpi, transparent=True)
+        print(f"Output saved to {outname}")
+
 
 def which_guider_used(visitid, guidemode = 'FINEGUIDE'):
     """ Query MAST for which guider was used in a given visit.

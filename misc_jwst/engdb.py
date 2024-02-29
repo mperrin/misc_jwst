@@ -170,7 +170,17 @@ def visit_start_end_times(eventlog, visitid=None, return_table=False, verbose=Tr
         t = astropy.table.Table(list(outputs.values()), names = outputs.keys() )
         t['visitstart'] = astropy.time.Time(t['visitstart'])
         t['visitend'] = astropy.time.Time(t['visitend'])
-        t['visit_fgs_start'] = astropy.time.Time(t['visit_fgs_start'])
+        try:
+            t['visit_fgs_start'] = astropy.time.Time(t['visit_fgs_start'])
+        except ValueError:
+            # Gracefully handle edge case, in which there may be gaps in telemetry or visits without guiding
+            # This is imperfect, but in this case just swap in the visit start time for the guiding start time as a placeholder,
+            # so at least the code doesn't hard stop with an exception.
+            for i in range(len(t)):
+                if t[i]['visit_fgs_start'] is None or t[i]['visit_fgs_start']=='None':
+                    t[i]['visit_fgs_start'] = t[i]['visitstart'].isot
+                    print(f'replaced value for {i}')
+            t['visit_fgs_start'] = astropy.time.Time(t['visit_fgs_start'])
 
         return(t)
 
