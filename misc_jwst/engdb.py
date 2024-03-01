@@ -179,7 +179,7 @@ def visit_start_end_times(eventlog, visitid=None, return_table=False, verbose=Tr
             for i in range(len(t)):
                 if t[i]['visit_fgs_start'] is None or t[i]['visit_fgs_start']=='None':
                     t[i]['visit_fgs_start'] = t[i]['visitstart'].isot
-                    print(f'replaced value for {i}')
+                    print(f'could not find FGSMAIN start time in log for {i} visits')
             t['visit_fgs_start'] = astropy.time.Time(t['visit_fgs_start'])
 
         return(t)

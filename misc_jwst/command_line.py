@@ -85,6 +85,7 @@ def display_schedule(sched_table, time_range=2*u.day):
     now = astropy.time.Time.now()
 
     print(f"Showing scheduled visits within {time_range} from the current time:\n")
+    print(f"VISIT ID\tVISIT TYPE      \tSCHED. FGSMAIN START\tInstr. Mode\tTarget Name")
     for row in sched_table[has_dates]:
 
         long_mode = row['SCIENCE INSTRUMENT AND MODE']
