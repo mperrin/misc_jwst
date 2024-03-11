@@ -179,7 +179,7 @@ def visit_start_end_times(eventlog, visitid=None, return_table=False, verbose=Tr
             for i in range(len(t)):
                 if t[i]['visit_fgs_start'] is None or t[i]['visit_fgs_start']=='None':
                     t[i]['visit_fgs_start'] = t[i]['visitstart'].isot
-                    print(f'could not find FGSMAIN start time in log for {i} visits')
+                    print(f'could not find FGSMAIN start time in log for visit {t[i]["visitid"]}')
             t['visit_fgs_start'] = astropy.time.Time(t['visit_fgs_start'])
 
         return(t)
@@ -288,8 +288,13 @@ def eventtable_extract_visit(event_table, selected_visit_id, verbose=False):
     if verbose:
         print(event_table[vmessages])
 
-    istart, istop = np.where(vmessages)[0]
-    return event_table[istart:istop+1]
+    line_indices = np.where(vmessages)[0]
+    if len(line_indices) == 2:
+        istart, istop = line_indices
+        return event_table[istart:istop+1]
+    else: # visit ongoing, has not ended as of end of available log
+        istart = line_indices[0]
+        return event_table[istart:]
 
 
 def visit_script_durations(event_table, selected_visit_id, verbose=True, return_table=False):
