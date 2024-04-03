@@ -839,7 +839,7 @@ def retrieve_and_display_id_images(sci_filename=None, progid=None, obs=None, vis
     and optionally visit number.
     """
     # user interface convenience - infer whether the provided string is a visit id automatically
-    if sci_filename.startswith('V') and visitid is None:
+    if sci_filename is not None and sci_filename.startswith('V') and visitid is None:
         visitid = sci_filename
         sci_filename = None
 

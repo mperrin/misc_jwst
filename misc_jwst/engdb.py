@@ -68,6 +68,31 @@ def pretty_print_event_log(eventlog):
         print(f"{value[0][0:22]:20s}\t {value[2]}")
 
 
+def _check_log_and_note_issues(msg, prior_note=None):
+    """ Check messages to detect issues we should flag for the user to be aware of
+
+    """
+    # check for visit guide failures
+    if 'FGS fixed target guide star acquisition failed on all attempts, exit FGSVERMAIN' in msg:
+        #print(f"FGS ID+Acq failed on all attempts for {vid}")
+        note = "SKIPPED. FGS ID failed all attempts"
+    elif 'MIRI target locate failed' in msg:
+        note = 'MIRI target acq failed'
+    elif 'NIRCam target locate failed' in msg:
+        note = 'NIRCam target acq failed'
+    elif 'subsystem unavailable' in msg:  # This checks for like 'NRC subsystem unavailable'
+        note = msg.split(',')[0]
+    elif 'Visit constraint violation' in msg:  # This may follow a subsystem unavailable
+        note = msg
+        if prior_note is not None:
+            note = note + ". " + prior_note
+    else:
+        note = None
+
+
+    return note
+
+
 def visit_start_end_times(eventlog, visitid=None, return_table=False, verbose=True):
     """ Find visit start and end times for all visits
 
@@ -132,15 +157,10 @@ def visit_start_end_times(eventlog, visitid=None, return_table=False, verbose=Tr
                 in_visit = False
         else:
             if in_visit:
-                # check for visit guide failures
-                if 'FGS fixed target guide star acquisition failed on all attempts, exit FGSVERMAIN' in msg:
-                    #print(f"FGS ID+Acq failed on all attempts for {vid}")
-                    note = "SKIPPED. FGS ID failed all attempts"
-                elif 'MIRI target locate failed' in msg:
-                    note = 'MIRI target acq failed'
-                elif 'NIRCam target locate failed' in msg:
-                    note = 'NIRCam target acq failed'
-                elif (vid_fgs_start is None) and ('Script activated' in msg) and msg.endswith('FGSMAIN'):
+                alert_note = _check_log_and_note_issues(msg, note)
+                if alert_note:
+                    note = alert_note
+                if (vid_fgs_start is None) and ('Script activated' in msg) and msg.endswith('FGSMAIN'):
                     vid_fgs_start = 'T'.join(time.split())[:-3]
     else:
         if in_visit:
@@ -178,8 +198,12 @@ def visit_start_end_times(eventlog, visitid=None, return_table=False, verbose=Tr
             # so at least the code doesn't hard stop with an exception.
             for i in range(len(t)):
                 if t[i]['visit_fgs_start'] is None or t[i]['visit_fgs_start']=='None':
+                    # swap in the visit script start time in place of FGS start, since it's all we have
                     t[i]['visit_fgs_start'] = t[i]['visitstart'].isot
-                    print(f'could not find FGSMAIN start time in log for visit {t[i]["visitid"]}')
+                    # print a note to let the user know -- but don't do this if there is already a note of
+                    # some issue with the visit, such that it halted before taking FGSMAIN.
+                    if 'visit halted' not in t[i]['notes']:
+                        print(f'could not find FGSMAIN start time in log for visit {t[i]["visitid"]}')
             t['visit_fgs_start'] = astropy.time.Time(t['visit_fgs_start'])
 
         return(t)

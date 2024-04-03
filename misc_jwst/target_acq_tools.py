@@ -273,3 +273,16 @@ def nrc_ta_image_comparison(visitid, inst='NIRCam', verbose=True, show_centroids
     outname = f'nrc_ta_comparison_{visitid}.pdf'
     plt.savefig(outname)
     print(f" => {outname}")
+
+
+
+
+def nirspec_wata_ta_comparison(visitid, verbose=True, show_centroids=True):
+
+
+    plt.tight_layout()
+    outname = f'nrs_ta_comparison_{visitid}.pdf'
+    plt.savefig(outname)
+    print(f" => {outname}")
+
+

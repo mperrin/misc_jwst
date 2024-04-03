@@ -7,6 +7,20 @@ from bs4 import BeautifulSoup
 
 import argparse
 
+_short_modes = {'MIRI Medium Resolution Spectroscopy': 'MIRI MRS',
+               'MIRI Low Resolution Spectroscopy': 'MIRI LRS',
+               'MIRI Coronagraphic Imaging': 'MIRI Coron',
+               'NIRSpec MultiObject Spectroscopy': 'NRS MOS',
+               'NIRSpec IFU Spectroscopy': 'NRS IFU',
+               'NIRCam Wide Field Slitless Spectroscopy': 'NIRCam WFSS',
+               'NIRSpec Bright Object Time Series': 'NRS BOTS',
+               'NIRCam Coronagraphic Imaging': 'NIRCam Coron',
+               'NIRSpec Fixed Slit Spectroscopy': 'NRS FS',
+               'NIRCam Engineering Imaging': 'NRC Eng Img',
+               'NIRISS Single-Object Slitless Spectroscopy': 'NIRISS SOSS',
+               'WFSC NIRCam Fine Phasing': "WFSC",
+              }
+
 
 
 def jwstops_latest(lookback=48*u.hour):
@@ -62,23 +76,9 @@ def display_schedule(sched_table, time_range=2*u.day):
     """ Print schedule table to text, with pretty formatting
     """
 
-    short_modes = {'MIRI Medium Resolution Spectroscopy': 'MIRI MRS',
-                   'MIRI Low Resolution Spectroscopy': 'MIRI LRS',
-                   'MIRI Coronagraphic Imaging': 'MIRI Coron',
-                   'NIRSpec MultiObject Spectroscopy': 'NRS MOS',
-                   'NIRSpec IFU Spectroscopy': 'NRS IFU',
-                   'NIRCam Wide Field Slitless Spectroscopy': 'NIRCam WFSS',
-                   'NIRSpec Bright Object Time Series': 'NRS BOTS',
-                   'NIRCam Coronagraphic Imaging': 'NIRCam Coron',
-                   'NIRSpec Fixed Slit Spectroscopy': 'NRS FS',
-                   'NIRCam Engineering Imaging': 'NRC Eng Img',
-                   'NIRISS Single-Object Slitless Spectroscopy': 'NIRISS SOSS',
-                   'WFSC NIRCam Fine Phasing': "WFSC",
-                  }
-
     has_dates = [str(v).startswith("20") for v in sched_table['SCHEDULED START TIME'].value]
 
-    sched_table[has_dates]
+    #sched_table[has_dates]
 
     marked_now = False
 
@@ -89,7 +89,7 @@ def display_schedule(sched_table, time_range=2*u.day):
     for row in sched_table[has_dates]:
 
         long_mode = row['SCIENCE INSTRUMENT AND MODE']
-        mode = short_modes.get(str(long_mode), str(long_mode))
+        mode = _short_modes.get(str(long_mode), str(long_mode))
         sched_time = astropy.time.Time(row['SCHEDULED START TIME'])
 
         if abs((sched_time-now)) > time_range:
@@ -151,6 +151,59 @@ def jwstops_deltas(lookback=48*u.hour):
     print(f"Latest available log message ends at {latest_log_time.isot[:-4]}  ({(now-latest_log_time).to_value(u.hour):.1f} hours ago)\n")
 
 
+def jwstops_overview(lookback=48*u.hour):
+    """ Revised top-level summary overview """
+    now = astropy.time.Time.now()
+    start_time = now - lookback
+    log = engdb.get_ictm_event_log(startdate=start_time)
+    visit_table = engdb.visit_start_end_times(log, verbose=False, return_table=True)
+    visit_table['VISIT ID'] = [f"{int(v[1:6])}:{int(v[6:9])}:{int(v[9:12])}" for v in list(visit_table['visitid'].value)]
+
+    # Retrieve schedule from the web
+    schedule = get_schedule_table()
+    # Drop all parallels, which don't have a scheduled time
+    has_dates = [str(v).startswith("20") for v in schedule['SCHEDULED START TIME'].value]
+    schedule = schedule[has_dates]
+
+    print(f"\nVisits within the previous {lookback}:\n")
+    print(f"Visit ID\tStart time (UT)     \tΔT [hr]\tInstr. Mode\tTarget\t\t\tNotes")
+    for row in visit_table:
+        match_index = np.where(schedule['VISIT ID'] == row['VISIT ID'])[0][0] 
+        schedrow = schedule[match_index]
+
+        sched_start_time = astropy.time.Time(schedrow['SCHEDULED START TIME'])
+        long_mode = schedrow['SCIENCE INSTRUMENT AND MODE']
+        mode = _short_modes.get(str(long_mode), str(long_mode))
+        delta_time = row['visit_fgs_start'] - sched_start_time
+
+        print(f"{row['VISIT ID']}\t{row['visit_fgs_start'].iso[:-4]}\t{delta_time.to_value(u.hour):+.2f}\t{mode:10s}\t{str(schedrow['TARGET NAME'])}\t{row['notes']}")
+
+    latest_log_time = astropy.time.Time(log[-1]['Time'])
+    print(f"\t\t{latest_log_time.isot[:-4]}\t>>>>>\tLatest available log.  ({(now-latest_log_time).to_value(u.hour):.1f} hours ago)")
+    marked_now = False
+    for irow in range(match_index, len(schedule)):
+        if irow > len(schedule):
+            break
+        schedrow = schedule[irow]
+        sched_start_time = astropy.time.Time(schedrow['SCHEDULED START TIME'])
+        long_mode = schedrow['SCIENCE INSTRUMENT AND MODE']
+        mode = _short_modes.get(str(long_mode), str(long_mode))
+
+        if sched_start_time > now and (not marked_now):
+            print(f"\t\t{now.iso[:-4]}\t>>>>>\tCurrent time")
+            marked_now = True
+        if sched_start_time - now >  lookback:
+            break
+
+        print(f"{schedrow['VISIT ID']}\t{sched_start_time.iso[:-4]}\t    \t{mode:10s}\t{str(schedrow['TARGET NAME'])}")
+
+    #print(f">>>>>>>>>>>   \tCurrent time       \t{now.iso[:-4]} UT \t<<<<<<<<<<<")
+
+
+
+    print(f"\nTimes above refer to scheduled/actual start times of FGS guide star ID+acq for each visit.\nNegative ΔT means observatory ahead of schedule, positive is behind schedule.\n")
+
+
 def jwstops_main():
     parser = argparse.ArgumentParser(
         description='JWST Ops tools'
@@ -159,6 +212,7 @@ def jwstops_main():
     parser.add_argument('-l', '--latest',  action='store_true', help='show latest (most recent) visits for which OSS logs are available')
     parser.add_argument('-s', '--schedule',  action='store_true', help='show OSS observing plan schedule')
     parser.add_argument('-t', '--time_deltas',  action='store_true', help='show timing delta between schedule and actual visit times.')
+    parser.add_argument('-o', '--overview',  action='store_true', help='Ops overview; combines some of latest, schedule, and deltas')
     parser.add_argument('-v', '--visitlog',  help='retrieve OSS visit log for this visit (within previous week).')
     parser.add_argument('-d', '--durations',  help='retrieve OSS visit event durations for this visit (within previous week).')
     parser.add_argument('-r', '--range',  default=48.0, help='Set time range in hours forward/back for displaying schedules. (default = 48 hours)')
@@ -175,6 +229,9 @@ def jwstops_main():
         jwstops_durations(args.durations)
     if args.time_deltas:
         jwstops_deltas(lookback=float(args.range)*u.hour)
+    if args.overview:
+        jwstops_overview(lookback=float(args.range)*u.hour)
+
 
 
 
