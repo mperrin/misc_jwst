@@ -7,6 +7,8 @@ from bs4 import BeautifulSoup
 
 import argparse
 
+import misc_jwst.utils
+
 _short_modes = {'MIRI Medium Resolution Spectroscopy': 'MIRI MRS',
                'MIRI Low Resolution Spectroscopy': 'MIRI LRS',
                'MIRI Coronagraphic Imaging': 'MIRI Coron',
@@ -20,7 +22,6 @@ _short_modes = {'MIRI Medium Resolution Spectroscopy': 'MIRI MRS',
                'NIRISS Single-Object Slitless Spectroscopy': 'NIRISS SOSS',
                'WFSC NIRCam Fine Phasing': "WFSC",
               }
-
 
 
 def jwstops_latest(lookback=48*u.hour):
@@ -72,6 +73,7 @@ def get_schedule_table():
     sched_table = astropy.table.vstack([sched_table2, sched_table1])  # last-but-one week, then current/latest week
     return sched_table
 
+
 def display_schedule(sched_table, time_range=2*u.day):
     """ Print schedule table to text, with pretty formatting
     """
@@ -107,7 +109,9 @@ def jwstops_schedule(time_range=48*u.hour):
     sched_table = get_schedule_table()
     display_schedule(sched_table, time_range=time_range)
 
+
 def jwstops_visitlog(visitid, lookback=7*u.day):
+    visitid = misc_jwst.utils.get_visitid(visitid)  # handle either input format
     print(f"Retrieving OSS visit log for {visitid}...")
     now = astropy.time.Time.now()
     start_time = now - lookback
@@ -118,7 +122,9 @@ def jwstops_visitlog(visitid, lookback=7*u.day):
     for row in visit_table:
         print(row['Time'][:-4], '\t', row['Message'])
 
+
 def jwstops_durations(visitid, lookback=7*u.day):
+    visitid = misc_jwst.utils.get_visitid(visitid)  # handle either input format
     print(f"Retrieving OSS visit log for {visitid}...")
     now = astropy.time.Time.now()
     start_time = now - lookback
@@ -231,10 +237,4 @@ def jwstops_main():
         jwstops_deltas(lookback=float(args.range)*u.hour)
     if args.overview:
         jwstops_overview(lookback=float(args.range)*u.hour)
-
-
-
-
-
-
 

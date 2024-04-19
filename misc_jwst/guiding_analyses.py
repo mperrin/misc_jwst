@@ -4,7 +4,7 @@ import requests
 import functools
 from astroquery.mast import Mast,Observations
 from astropy.table import Table, unique, vstack
-import astropy.time
+import astropy.time, astropy.stats
 import astropy.io.fits as fits
 import numpy as np
 import scipy
@@ -13,6 +13,7 @@ import matplotlib, matplotlib.pyplot as plt
 
 import pysiaf
 import jwst.datamodels
+import misc_jwst.utils
 
 def mast_retrieve_guiding_files(filenames, out_dir='.', verbose=True):
     """Download one or more guiding data products from MAST
@@ -165,6 +166,7 @@ def find_visit_guiding_files(visitid, guidemode='FINEGUIDE', verbose=True, autod
 
     """
 
+    visitid = misc_jwst.utils.get_visitid(visitid)  # handle either input format, VPPPPPOOOVVV or PPPP:O:V
     progid = visitid[1:6]
     obs = visitid[6:9]
 
@@ -244,6 +246,7 @@ def find_guiding_id_file(sci_filename=None, guidemode='ID', progid=None, obs=Non
         obs_str = sci_hdul[0].header['OBSERVTN']
         visit_str = sci_hdul[0].header['VISIT_ID']
     elif visitid is not None:
+        visitid = misc_jwst.utils.get_visitid(visitid)  # handle either input format, VPPPPPOOOVVV or PPPP:O:V
         progid_str = visitid[1:6]
         obs_str = visitid[6:9]
         visit_str = visitid[1:12]
@@ -269,6 +272,7 @@ def guiding_performance_plot(sci_filename=None, visitid=None, verbose=True, save
 
     # Retrieve the guiding packet file(s) from MAST
     if visitid:
+        visitid = misc_jwst.utils.get_visitid(visitid)  # handle either input format, VPPPPPOOOVVV or PPPP:O:V
         visit_mode = True
         gs_fns = find_visit_guiding_files(visitid, verbose=verbose)
     else:
@@ -800,12 +804,12 @@ def show_all_gs_images(filenames, guidemode='ID'):
 
     """
 
-    print(f"Found a total of {len(filenames)} ID images for that observation.")
+    print(f"Found a total of {len(filenames)} {guidemode} images for that observation.")
 
     ncols= min(3, len(filenames))
     nrows = int(np.ceil(len(filenames)/3))
 
-    print(f'Loading and plotting ID images...')
+    print(f'Loading and plotting {guidemode} images...')
     fig, axes = plt.subplots(figsize=(16,6*nrows), nrows=nrows, ncols=ncols,
                             gridspec_kw={'wspace': 0.01, 
                                          'left': 0.05,
@@ -844,6 +848,7 @@ def retrieve_and_display_id_images(sci_filename=None, progid=None, obs=None, vis
         sci_filename = None
 
     if visitid is not None:
+        visitid = misc_jwst.utils.get_visitid(visitid)  # handle either input format, VPPPPPOOOVVV or PPPP:O:V
         progid = int(visitid[1:6])
         obs = int(visitid[6:9])
         visit = int(visitid[9:12])
@@ -874,6 +879,7 @@ def retrieve_and_display_guider_images(visitid=None, progid=None, obs=None, visi
         'ACQ1' or 'ACQ2' or 'TRACK' or 'FINEGUIDE'
     """
     if visitid is not None:
+        visitid = misc_jwst.utils.get_visitid(visitid)  # handle either input format, VPPPPPOOOVVV or PPPP:O:V
         progid = int(visitid[1:6])
         obs = int(visitid[6:9])
         visit = int(visitid[9:12])
@@ -903,6 +909,7 @@ def which_guider_used(visitid, guidemode = 'FINEGUIDE'):
         would need to be TRACK for moving targets
 
     """
+    visitid = misc_jwst.utils.get_visitid(visitid)  # handle either input format, VPPPPPOOOVVV or PPPP:O:V
     progid = (visitid[1:6])  # These must be strings
     obs = (visitid[6:9])
     visit = (visitid[9:12])

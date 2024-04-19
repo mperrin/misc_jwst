@@ -9,6 +9,7 @@ from time import sleep
 import functools
 
 import astropy.table
+import misc_jwst.utils
 
 @functools.lru_cache
 def get_ictm_event_log(startdate='2022-02-01', enddate=None, mast_api_token=None, verbose=False,
@@ -179,8 +180,9 @@ def visit_start_end_times(eventlog, visitid=None, return_table=False, verbose=Tr
 
     if visitid and verbose:
         print(output[0])
+        visitid_std = misc_jwst.utils.get_visitit(visitid)  # handle either possible input format
         for row in output:
-            if visitid in row:
+            if visitid_std in row:
                 print(row)
     elif verbose:
         for row in output:
@@ -214,9 +216,9 @@ def extract_oss_event_msgs_for_visit(eventlog, selected_visit_id, ta_only=False,
     vid = ''
     in_selected_visit = False
     in_ta = False
+    selected_visit_id = misc_jwst.utils.get_visitid(selected_visit_id)  # handle either input format
 
     messages = []
-
     if verbose:
         print(f"\tSearching for visit: {selected_visit_id}")
     for row in eventlog:
