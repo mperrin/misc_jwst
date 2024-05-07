@@ -161,7 +161,7 @@ def visit_start_end_times(eventlog, visitid=None, return_table=False, verbose=Tr
                 alert_note = _check_log_and_note_issues(msg, note)
                 if alert_note:
                     note = alert_note
-                if (vid_fgs_start is None) and ('Script activated' in msg) and msg.endswith('FGSMAIN'):
+                if (vid_fgs_start is None) and ('Script activated' in msg) and (msg.endswith('FGSMAIN') or msg.endswith('FGSMTMAIN')):
                     vid_fgs_start = 'T'.join(time.split())[:-3]
     else:
         if in_visit:
