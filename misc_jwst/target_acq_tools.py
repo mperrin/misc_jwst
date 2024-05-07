@@ -576,7 +576,8 @@ def nrs_ta_centroids_and_offsets(model, box_size = 16, plot=True, saveplot=True,
 
 
         if saveplot:
-            outname = f'lrs_ta_wcs_offset_jw{model.meta.observation.program_number}obs{model.meta.observation.observation_number}{outname_extra}.pdf'
+            label = 'wata' if 'WATA' in model.meta.exposure.type else 'taconfirm'
+            outname = f'nrs_jw{model.meta.observation.program_number}obs{model.meta.observation.observation_number}_{label}_wcs_offset{outname_extra}.pdf'
             plt.savefig(outname)
             print(f" => Saved to {outname}")
 
@@ -591,7 +592,7 @@ def nirspec_wata_ta_analysis(visitid, verbose=True):
 
     ta_files = get_visit_ta_image(visitid, inst='nirspec', verbose=verbose)
     if len(ta_files) != 2:
-        print(f'Warning, expected to find 2 files (TACQ+TACONFIRM) but instead found {len(taa_files)}... ')
+        print(f'Warning, expected to find 2 files (TACQ+TACONFIRM) but instead found {len(ta_files)}... ')
 
     tacq_model = jwst.datamodels.open(ta_files[0])
     taconfirm_model = jwst.datamodels.open(ta_files[1])
