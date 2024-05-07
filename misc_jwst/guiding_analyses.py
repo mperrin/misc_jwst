@@ -272,6 +272,7 @@ def guiding_performance_plot(sci_filename=None, visitid=None, verbose=True, save
 
     # Retrieve the guiding packet file(s) from MAST
     if visitid:
+        import misc_jwst.utils
         visitid = misc_jwst.utils.get_visitid(visitid)  # handle either input format, VPPPPPOOOVVV or PPPP:O:V
         visit_mode = True
         gs_fns = find_visit_guiding_files(visitid, verbose=verbose)
@@ -547,7 +548,7 @@ def guiding_performance_jitterball(sci_filename, fov_size = 8, nbins=50, verbose
     ax.set_ylabel("GS Centroid Offset Y [milliarcsec]", fontsize=18)
 
 
-    fig.suptitle(f"Guiding during {os.path.basename(sci_filename)}\n", fontweight='bold', fontsize=18)
+    fig.suptitle(f"Guiding during {os.path.basename(sci_filename)}\n", fontweight='bold', fontsize=12)
 
 
     for rad in [1,2,3]:
