@@ -147,7 +147,7 @@ def get_visit_exposure_times(visitid):
     """ Return a table with start and end times for all exposures within a visit"""
     inst = visit_which_instrument(visitid)
     res = jwst_keywords_query(inst, visit_id=visitid[1:],
-                                       columns = 'filename, visit_id, date_beg_mjd, date_end_mjd, vststart_mjd, visitend_mjd, productLevel')
+                                       columns = 'filename, visit_id, date_beg_mjd, date_end_mjd, vststart_mjd, visitend_mjd, productLevel, exp_type')
     for colname in ['date_beg_mjd', 'date_end_mjd', 'vststart_mjd', 'visitend_mjd']:
         times = astropy.time.Time(res[colname], format='mjd')
         times.format='iso'
