@@ -324,10 +324,13 @@ def guiding_performance_plot(sci_filename=None, visitid=None, verbose=True, save
                     last_gs_fn_middle = fn_middle
                     if verbose:
                         print(f"Dither before {gs_fn} at {dither_times[-1].iso}")
-                # We have to compute means per segment, since it's not meaningful to combine across dithers
+                # We have to compute means per guide file, since it's not meaningful to combine across dithers
+                #  But, for multiple contiguous segments, seg002 and onwards, use the same xmean as computed on
+                #  the first segment, for consistency and to avoid spurious discontinuities.
                 mask = centroid_table_more.columns['bad_centroid_dq_flag'] == 'GOOD'
-                xmean = np.nanmean(centroid_table_more[mask]['guide_star_position_x'])
-                ymean = np.nanmean(centroid_table_more[mask]['guide_star_position_y'])
+                if 'seg' not in gs_fn or 'seg001' in gs_fn:
+                    xmean = np.nanmean(centroid_table_more[mask]['guide_star_position_x'])
+                    ymean = np.nanmean(centroid_table_more[mask]['guide_star_position_y'])
                 centroid_table_more['guide_star_position_x'] -= xmean
                 centroid_table_more['guide_star_position_y'] -= ymean
 
@@ -570,6 +573,7 @@ def guiding_dithers_plot(visitid, verbose=True, save=False, alpha=0.2,
     ax.set_title(f"Guide Star Centroid Positions during {visitid} dithers", fontweight='bold', fontsize=18)
     ax.set_xlabel("FGS X coordinate [arcsec]")
     ax.set_ylabel("FGS Y coordinate [arcsec]")
+    ax.set_aspect('equal')
 
     # set up secondary axes
     xmin, xmax = ax.get_xlim()
