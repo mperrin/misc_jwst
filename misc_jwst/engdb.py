@@ -38,11 +38,17 @@ def get_ictm_event_log(startdate='2022-02-01', enddate=None, mast_api_token=None
 
 
     # fetch event messages from MAST engineering database (lags FOS EDB)
-    start = datetime.fromisoformat(f'{startdate}+00:00')
+    try :
+        start = datetime.strptime(startdate, "%Y-%m-%dT%H:%M:%S.%f%z")
+    except Exception as e:
+        start = datetime.fromisoformat(f'{startdate}+00:00')
     if enddate is None:
         end = datetime.now(tz=tz_utc)
     else:
-        end = datetime.fromisoformat(f'{enddate}+23:59:59')
+        try :
+            end = datetime.strptime(enddate, "%Y-%m-%dT%H:%M:%S.%f%z")
+        except Exception as e:
+            end = datetime.fromisoformat(f'{enddate}+23:59:59')
 
     startstr = start.strftime(mastfmt)
     endstr = end.strftime(mastfmt)
