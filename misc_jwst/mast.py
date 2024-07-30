@@ -118,22 +118,16 @@ def query_visit_time(visitid, verbose=False):
     Returns start and end time as astropy.time.Time instances, or Nones.
     """
 
+    # Get table of times for all visits in that program
     program = visitid[1:6]
+    visit_times = query_program_visit_times(program, verbose=verbose)
 
-    from astroquery.mast import Observations
-    obs = Observations.query_criteria(obs_collection=["JWST"], proposal_id=[program])
-    # Annoyingly, that query interface doesn't return start/end times
-    instruments = [val.split('/')[0] for val in set(obs['instrument_name'])]
-
-    visit_times = []
-    for inst in instruments:
-        if verbose:
-            print(f"querying for visits using {inst}")
-        visit_times += [_query_program_visit_times_by_inst(program, inst),] + [inst]
+    #  Scan through the table for a row matching that visit id
     for vid, vstart, vend, inst in visit_times:
         if verbose:
             print(vid, visitid, vid==visitid, inst)
         if vid==visitid:
+            # Return times as astropy Time objects
             t0 = astropy.time.Time(vstart, format='mjd')
             t1 = astropy.time.Time(vend, format='mjd')
             t0.format = 'iso'
@@ -155,6 +149,11 @@ def get_visit_exposure_times(visitid):
     res.sort('date_beg_mjd')
 
     exps_level2 = res[np.asarray(res['productLevel'].value) != '3']
+    # mask out some redundant files
+    fns = exps_level2['filename']
+    ignore_derived_products_mask = [('s3d' not in fn) and ('x1d' not in fn) for fn in fns]
+    exps_level2  = exps_level2[ignore_derived_products_mask]
+
     return exps_level2
 
 
@@ -171,11 +170,13 @@ def query_program_visit_times(program,  verbose=False):
     Returns astropy Table with columns for visit ID and start and end times.
     """
 
+    # use Observations query interface to find all observations
     from astroquery.mast import Observations
     obs = Observations.query_criteria(obs_collection=["JWST"], proposal_id=[program])
-    # Annoyingly, that query interface doesn't return start/end times
-    instruments = [val.split('/')[0] for val in set(obs['instrument_name'])]
 
+    # Annoyingly, that query interface doesn't return start/end times,
+    # therefore we have to separately call a different query interface for those, per instrument
+    instruments = [val.split('/')[0] for val in set(obs['instrument_name'])]
     visit_times = []
     import warnings
     with warnings.catch_warnings():
@@ -185,14 +186,15 @@ def query_program_visit_times(program,  verbose=False):
                 print(f"querying for visits using {inst}")
             visit_times += _query_program_visit_times_by_inst(program, inst)
 
-
+    # Format outputs
     vids = [v[0] for v in visit_times]
     starts =astropy.time.Time([float(v[1]) for v in visit_times], format='mjd')
     ends = astropy.time.Time([float(v[2]) for v in visit_times], format='mjd')
-
-    #visit_times = np.asarray(visit_times)
-    return astropy.table.Table([vids, starts, ends],
-                               names=('visit_id', 'start_mjd', 'end_mjd'))
+    insts = [v[3] for v in visit_times]
+    vis_table =  astropy.table.Table([vids, starts, ends, insts],
+                                     names=('visit_id', 'start_mjd', 'end_mjd', 'instrument'))
+    vis_table.sort(keys='start_mjd')
+    return vis_table
 
 
 def _query_program_visit_times_by_inst(program, instrument, verbose=False):
@@ -243,11 +245,9 @@ def _query_program_visit_times_by_inst(program, instrument, verbose=False):
     if 'bstrtime' in collist:
         responsetable.sort(keys='bstrtime')
 
-
     visit_times = []
-
     for row in responsetable:
-        visit_times.append( ('V'+row['visit_id'], row['vststart_mjd'], row['visitend_mjd']))
+        visit_times.append( ('V'+row['visit_id'], row['vststart_mjd'], row['visitend_mjd'], instrument))
 
     visit_times= set(visit_times)
     return list(visit_times)
