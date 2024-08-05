@@ -123,6 +123,12 @@ def jwstops_visitlog(visitid, lookback=7*u.day):
         print(row['Time'][:-4], '\t', row['Message'])
 
 
+def jwstops_guiding(visitid, lookback=7*u.day):
+    import misc_jwst.guiding_analyses
+    visitid = misc_jwst.utils.get_visitid(visitid)  # handle either input format
+    misc_jwst.guiding_analyses.visit_guider_images(visitid)
+
+
 def jwstops_durations(visitid, lookback=7*u.day):
     visitid = misc_jwst.utils.get_visitid(visitid)  # handle either input format
     print(f"Retrieving OSS visit log for {visitid}...")
@@ -220,6 +226,7 @@ def jwstops_main():
     parser.add_argument('-t', '--time_deltas',  action='store_true', help='show timing delta between schedule and actual visit times.')
     parser.add_argument('-o', '--overview',  action='store_true', help='Ops overview; combines some of latest, schedule, and deltas')
     parser.add_argument('-v', '--visitlog',  help='retrieve OSS visit log for this visit (within previous week).')
+    parser.add_argument('-g', '--guiding',  help='retrieve and plot guiding ID/ACQ/Track images for this visit (within previous week).')
     parser.add_argument('-d', '--durations',  help='retrieve OSS visit event durations for this visit (within previous week).')
     parser.add_argument('-r', '--range',  default=48.0, help='Set time range in hours forward/back for displaying schedules. (default = 48 hours)')
 
@@ -231,6 +238,8 @@ def jwstops_main():
         jwstops_schedule(time_range=float(args.range)*u.hour)
     if args.visitlog:
         jwstops_visitlog(args.visitlog)
+    if args.guiding:
+        jwstops_guiding(args.guiding)
     if args.durations:
         jwstops_durations(args.durations)
     if args.time_deltas:

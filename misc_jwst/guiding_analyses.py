@@ -8,6 +8,7 @@ import astropy.time, astropy.stats
 import astropy.io.fits as fits
 import numpy as np
 import scipy
+import functools
 
 import matplotlib, matplotlib.pyplot as plt
 
@@ -598,7 +599,6 @@ def guiding_dithers_plot(visitid, verbose=True, save=False, alpha=0.2,
 
 
 
-
 def guiding_performance_jitterball(sci_filename, fov_size = 8, nbins=50, verbose=True, save=False):
     """Generate a plot showing the guiding jitter during an exposure
 
@@ -718,10 +718,6 @@ def guiding_performance_jitterball(sci_filename, fov_size = 8, nbins=50, verbose
 
 
 
-
-
-import functools
-
 @functools.cache
 def get_siaf_aperture(guidername):
     """Get an FGS SIAF aperture
@@ -729,7 +725,6 @@ def get_siaf_aperture(guidername):
     gid = guidername[-1] # '1' or '2'
     s = pysiaf.Siaf('FGS')
     return s.apertures[f'FGS{gid}_FULL_OSS']  # not sure if the _OSS is needed in this case or not
-
 
 
 @functools.cache
@@ -859,6 +854,7 @@ def display_one_id_image(filename, destripe = True, smooth=True, ax=None,
 
     if return_model:
         return model
+
 
 def display_one_guider_image(filename,  ax=None, use_dq=False,
                          show_metadata=True, count=0,
@@ -1040,6 +1036,18 @@ def retrieve_and_display_guider_images(visitid=None, progid=None, obs=None, visi
         outname = f'V{visit_id}_{guidemode}_images.pdf'
         plt.savefig(outname, dpi=save_dpi, transparent=True)
         print(f"Output saved to {outname}")
+
+
+def visit_guider_images(visitid):
+    """ Retrieve and display to PDF all the guider images in a visit
+
+    See functions retrieve_and_display_id_images and retrieve_and_display_guider_images for further details.
+    """
+    retrieve_and_display_id_images(visitid=visitid)
+    for guidemode in ['ACQ1', 'ACQ2', 'TRACK']:
+        retrieve_and_display_guider_images(visitid=visitid, guidemode=guidemode)
+
+    print(f"Outputs saved to {visitid}_*_images.pdf")
 
 
 def which_guider_used(visitid, guidemode = 'FINEGUIDE'):
