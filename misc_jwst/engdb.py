@@ -77,6 +77,8 @@ def _check_log_and_note_issues(msg, prior_note=None):
     if 'FGS fixed target guide star acquisition failed on all attempts, exit FGSVERMAIN' in msg:
         #print(f"FGS ID+Acq failed on all attempts for {vid}")
         note = "SKIPPED. FGS ID failed all attempts"
+    elif 'FGS guide star reacquisition failed' in msg:
+        note = 'FAILED part way through: FGS guide star reacquisition failed.'
     elif 'MIRI target locate failed' in msg:
         note = 'MIRI target acq failed'
     elif 'NIRCam target locate failed' in msg:

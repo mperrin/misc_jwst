@@ -137,7 +137,8 @@ def show_ta_img(visitid, ax=None, return_handles=False, inst='NIRCam', mark_refe
         ax.axhline(yref_subarr, color='gray', alpha=0.5)
     if mark_apername:
         # mark aperture, and which guider was used
-        ax.text(0.95, 0.95, hdul[0].header['APERNAME']+f"\n using {which_guider_used(visitid)}",
+        import misc_jwst.guiding_analyses
+        ax.text(0.95, 0.95, hdul[0].header['APERNAME']+f"\n using {misc_jwst.guiding_analyses.which_guider_used(visitid)}",
             color='white', transform=ax.transAxes, horizontalalignment='right', verticalalignment='top')
 
 

@@ -84,9 +84,12 @@ def jwst_keywords_query(instrument, columns=None, all_columns=False, verbose=Fal
         responsetable['visit_id'] = astropy.table.Column(responsetable['visit_id'], dtype=np.dtype('<U12'))
 
     if 'vststart_mjd' in columns:
-        responsetable.add_column(astropy.table.Column(astropy.time.Time(responsetable['vststart_mjd'], format='mjd').iso, dtype=np.dtype('<U16')),
+        try:
+            responsetable.add_column(astropy.table.Column(astropy.time.Time(responsetable['vststart_mjd'], format='mjd').iso, dtype=np.dtype('<U16')),
                             # index=1,
                             name='visit start time')
+        except ValueError:
+            pass # For some reason something in that column couldn't be cast to an astropy.Time object
 
     return responsetable
 
