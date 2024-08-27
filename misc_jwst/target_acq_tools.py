@@ -233,6 +233,7 @@ def nrc_ta_comparison(visitid, inst='NIRCam', verbose=True, show_centroids=True)
                 if verbose:
                     print("Could not parse TA coordinates from log. TA may have failed?")
                 oss_cen_sci_pythonic = None
+                oss_centroid_text = "No OSS centroid; TA failed"
 
             ### WCS COORDINATES ###
             model = jwst.datamodels.open(hdul)
@@ -257,6 +258,7 @@ def nrc_ta_comparison(visitid, inst='NIRCam', verbose=True, show_centroids=True)
         cen = webbpsf.fwcentroid.fwcentroid(im_obs_clean*border_mask)
         axes[0].scatter(cen[1], cen[0], color='red', marker='+', s=50)
         axes[0].text(cen[1], cen[0], '  webbpsf', color='red', verticalalignment='center')
+
         axes[0].text(0.95, 0.10, oss_centroid_text+f'\n webbpsf centroid: {cen[1]:.2f}, {cen[0]:.2f}',
                      horizontalalignment='right', verticalalignment='bottom',
                      transform=axes[0].transAxes,
@@ -512,6 +514,19 @@ def nrs_ta_centroids_and_offsets(model, box_size = 16, plot=True, saveplot=True,
                             edgecolor='yellow', facecolor='none'))
 
         plot_full_image(model, ax=ax0, colorbar=False, vmax=vmax)
+
+        # Check subarray name, if necessary working around API changes in datamodels
+        try:
+            subarray_name = model.meta.exposure.subarray
+        except AttributeError:
+            subarray_name = model.meta.subarray.name
+
+
+        if subarray_name =='SUB2048':
+            # crop displayed region to be conssitent with the SUB32 view
+            ax0.set_xlim(1398-0.5, 1398+32-0.5)
+            # Y axis is already cropped to 32 pixels in this case. 
+            # TODO also hadnle the FULL TA case ? 
         if model.meta.filename == 'contents':
             # put a better more descriptive label on the plot
             ax0.set_title(f'NIRSpec {model.meta.exposure.type} for V{model.meta.observation.visit_id}')

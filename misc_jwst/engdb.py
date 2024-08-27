@@ -81,7 +81,7 @@ def _check_log_and_note_issues(msg, prior_note=None):
         note = 'FAILED part way through: FGS guide star reacquisition failed.'
     elif 'MIRI target locate failed' in msg:
         note = 'MIRI target acq failed'
-    elif 'NIRCam target locate failed' in msg:
+    elif 'NIRCam target locate failed' in msg or 'NRC target locate failed' in msg:
         note = 'NIRCam target acq failed'
     elif 'subsystem unavailable' in msg:  # This checks for like 'NRC subsystem unavailable'
         note = msg.split(',')[0]
