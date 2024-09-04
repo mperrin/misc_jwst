@@ -12,14 +12,15 @@ import misc_jwst.utils
 _short_modes = {'MIRI Medium Resolution Spectroscopy': 'MIRI MRS',
                'MIRI Low Resolution Spectroscopy': 'MIRI LRS',
                'MIRI Coronagraphic Imaging': 'MIRI Coron',
+               'NIRCam Wide Field Slitless Spectroscopy': 'NIRCam WFSS',
+               'NIRCam Engineering Imaging': 'NRC Eng Img',
+               'NIRCam Coronagraphic Imaging': 'NIRCam Coron',
+               'NIRISS Single-Object Slitless Spectroscopy': 'NIRISS SOSS',
+               'NIRISS Wide Field Slitless Spectroscopy': 'NIRISS WFSS',
                'NIRSpec MultiObject Spectroscopy': 'NRS MOS',
                'NIRSpec IFU Spectroscopy': 'NRS IFU',
-               'NIRCam Wide Field Slitless Spectroscopy': 'NIRCam WFSS',
                'NIRSpec Bright Object Time Series': 'NRS BOTS',
-               'NIRCam Coronagraphic Imaging': 'NIRCam Coron',
                'NIRSpec Fixed Slit Spectroscopy': 'NRS FS',
-               'NIRCam Engineering Imaging': 'NRC Eng Img',
-               'NIRISS Single-Object Slitless Spectroscopy': 'NIRISS SOSS',
                'WFSC NIRCam Fine Phasing': "WFSC",
               }
 
@@ -129,6 +130,12 @@ def jwstops_guiding(visitid, lookback=7*u.day):
     misc_jwst.guiding_analyses.visit_guider_images(visitid)
 
 
+def jwstops_guiding_timeline(visitid):
+    import misc_jwst.guiding_analyses
+    visitid = misc_jwst.utils.get_visitid(visitid)  # handle either input format
+    misc_jwst.guiding_analyses.visit_guiding_timeline(visitid)
+
+
 def jwstops_durations(visitid, lookback=7*u.day):
     visitid = misc_jwst.utils.get_visitid(visitid)  # handle either input format
     print(f"Retrieving OSS visit log for {visitid}...")
@@ -180,15 +187,20 @@ def jwstops_overview(lookback=48*u.hour):
     print(f"\nVisits within the previous {lookback}:\n")
     print(f"Visit ID\tStart time (UT)     \tΔT [hr]\tInstr. Mode\tTarget\t\t\tNotes")
     for row in visit_table:
-        match_index = np.where(schedule['VISIT ID'] == row['VISIT ID'])[0][0] 
-        schedrow = schedule[match_index]
+        try:
+            match_index = np.where(schedule['VISIT ID'] == row['VISIT ID'])[0][0] 
+            schedrow = schedule[match_index]
+            sched_start_time = astropy.time.Time(schedrow['SCHEDULED START TIME'])
+            long_mode = schedrow['SCIENCE INSTRUMENT AND MODE']
+            mode = _short_modes.get(str(long_mode), str(long_mode))
+            delta_time = row['visit_fgs_start'] - sched_start_time
 
-        sched_start_time = astropy.time.Time(schedrow['SCHEDULED START TIME'])
-        long_mode = schedrow['SCIENCE INSTRUMENT AND MODE']
-        mode = _short_modes.get(str(long_mode), str(long_mode))
-        delta_time = row['visit_fgs_start'] - sched_start_time
+            print(f"{row['VISIT ID']}\t{row['visit_fgs_start'].iso[:-4]}\t{delta_time.to_value(u.hour):+.2f}\t{mode:10s}\t{str(schedrow['TARGET NAME'])}\t{row['notes']}")
+        except IndexError:
+            print(f"{row['VISIT ID']}\t{row['visit_fgs_start'].iso[:-4]}\t??\t??\t??\t{row['notes']}")
 
-        print(f"{row['VISIT ID']}\t{row['visit_fgs_start'].iso[:-4]}\t{delta_time.to_value(u.hour):+.2f}\t{mode:10s}\t{str(schedrow['TARGET NAME'])}\t{row['notes']}")
+
+
 
     latest_log_time = astropy.time.Time(log[-1]['Time'])
     print(f"\t\t{latest_log_time.isot[:-4]}\t>>>>>\tLatest available log.  ({(now-latest_log_time).to_value(u.hour):.1f} hours ago)")
@@ -227,6 +239,7 @@ def jwstops_main():
     parser.add_argument('-o', '--overview',  action='store_true', help='Ops overview; combines some of latest, schedule, and deltas')
     parser.add_argument('-v', '--visitlog',  help='retrieve OSS visit log for this visit (within previous week).')
     parser.add_argument('-g', '--guiding',  help='retrieve and plot guiding ID/ACQ/Track images for this visit (within previous week).')
+    parser.add_argument('-G', '--guiding_timeline',  help='retrieve log timeline of guiding events and images for this visit.')
     parser.add_argument('-d', '--durations',  help='retrieve OSS visit event durations for this visit (within previous week).')
     parser.add_argument('-r', '--range',  default=48.0, help='Set time range in hours forward/back for displaying schedules. (default = 48 hours)')
 
@@ -240,6 +253,9 @@ def jwstops_main():
         jwstops_visitlog(args.visitlog)
     if args.guiding:
         jwstops_guiding(args.guiding)
+    if args.guiding_timeline:
+        jwstops_guiding_timeline(args.guiding_timeline)
+
     if args.durations:
         jwstops_durations(args.durations)
     if args.time_deltas:

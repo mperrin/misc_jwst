@@ -162,8 +162,12 @@ def find_relevant_guiding_file(sci_filename, verbose=True):
 
 @functools.lru_cache
 def find_visit_guiding_files(visitid, guidemode='FINEGUIDE', verbose=True, autodownload=True):
-    """ Given a JWST visit id string, like 'V01234005001', retrieve all guiding data products
+    """ Given a JWST visit id string, like 'V01234005001', retrieve specified guiding data products
     for that visit from MAST. Files downloaded into current working directory.
+
+    This version of the function requires specifying a single guidemode at a time, e.g. 'ACQ1'
+    and only returns that type of file. See also find_all_visit_guiding_files
+
 
     """
 
@@ -239,6 +243,10 @@ def find_guiding_id_file(sci_filename=None, guidemode='ID', progid=None, obs=Non
     This uses FITS keywords in the science header to determine the time period and guide mode,
     and then retrieves the file from MAST
 
+    See also
+    --------
+    find_visit_guiding_files, find_all_visit_guiding_files
+
     """
 
     if sci_filename is not None:
@@ -260,6 +268,84 @@ def find_guiding_id_file(sci_filename=None, guidemode='ID', progid=None, obs=Non
 
     return find_visit_guiding_files(visitid='V'+visit_str, guidemode='ID')
 
+
+@functools.lru_cache
+def find_all_visit_guiding_files(visitid, verbose=False, exclude_stacked=True, autodownload=True):
+    """ Given a JWST visit id string, like 'V01234005001', retrieve all guiding data products
+    for that visit from MAST. Files downloaded into current working directory.
+
+    This function returns all the guiding files, of all types.
+    See also find_visit_guiding_files for a version that allows specifying a single
+    guidemode at a time, e.g. 'ACQ1' and only returns that type of file.
+
+    This version returns a Table of outputs, and the relevant start and end times
+
+    """
+    if visitid is not None:
+        visitid = misc_jwst.utils.get_visitid(visitid)  # handle either input format, VPPPPPOOOVVV or PPPP:O:V
+        progid = visitid[1:6]
+        obs = visitid[6:9]
+        vis = visitid[9:12]
+
+    # Set up the query
+    keywords = {
+    'program': [progid]
+    ,'observtn': [obs]
+    #'exp_type': [exp_type]
+    #,'visit': [vis]
+    }
+
+    params = {
+        'columns': '*',
+        'filters': set_params(keywords)
+        }
+
+    # Run the web service query. This uses the specialized, lower-level webservice for the
+    # guidestar queries: https://mast.stsci.edu/api/v0/_services.html#MastScienceInstrumentKeywordsGuideStar
+
+    #if verbose:
+    #    print(params)
+    service = 'Mast.Jwst.Filtered.GuideStar'
+    t = Mast.service_request(service, params)
+
+    if len(t) > 0:
+        t.sort(keys='date_end_mjd')  # Empirically this works better as a sort key than some of the other date keywords; not sure why!
+
+        # Ensure unique file names, should any be repeated over multiple observations (e.g. if parallels):
+        fn = t['fileName']
+        # Set of derived Observation IDs:
+
+        products = list(fn)
+        times_start = list(t['date_obs_mjd'])
+        times_end = list(t['date_end_mjd'])
+
+    else:
+        if verbose:
+            print("Query returned no guiding files")
+        return None
+
+    # TODO clean up this next block of code, now that it's a table below
+    if exclude_stacked:
+        # ignore stacked_cal files; redundant with the _image_cal files.
+        combined = [(fn, tstart, tend) for fn, tstart, tend in zip(products, times_start, times_end) if 'stacked_cal.fits' not in fn ]
+        filenames = [a[0] for a in combined]
+        times_start = astropy.time.Time([a[1] for a in combined], format='mjd')
+        times_end = astropy.time.Time([a[2] for a in combined], format='mjd')
+    else:
+        filenames = products
+
+    if verbose:
+        print(f"For visit: {visitid}")
+        print("Found guiding telemetry files:")
+        for p in products:
+            print("   ", p)
+
+    guiding_file_table = astropy.table.Table([filenames, times_start, times_end], names = ['Filename', 'Time Start', 'Time End'])
+
+    if autodownload:
+        outfiles = mast_retrieve_guiding_files(guiding_file_table['Filename'])
+
+    return guiding_file_table
 
 
 def guiding_performance_plot(sci_filename=None, visitid=None, verbose=True, save=False, yrange=None,
@@ -905,19 +991,29 @@ def display_one_guider_image(filename,  ax=None, use_dq=False,
             dq = np.rot90(dq)
             dq = dq[:, ::-1]
         origin='upper' # Argh, the FGS DHAS diagnostic plots put 0,0 at the UPPER left
+
+        # Subarray starting coords in DET frame
+        startx = model.meta.subarray.detxcor
+        starty = model.meta.subarray.detycor
     else:
         origin='lower'
+        # Subarray starting coords in SCI frame
+        startx = model.meta.subarray.xstart
+        starty = model.meta.subarray.ystart
+
 
     mean, median, sigma = astropy.stats.sigma_clipped_stats(im, )
 
     norm = matplotlib.colors.AsinhNorm(vmin = median-sigma, vmax=im.max(), linear_width=im.max()/1e3)
 
-    ax.imshow(im, norm=norm, origin=origin)
+    extent = [startx-0.5, startx+im.shape[1]+0.5, starty-0.5, starty+im.shape[0]+0.5]
+
+    ax.imshow(im, norm=norm, origin=origin, extent=extent)
 
     if use_dq:
         bpmask = np.zeros_like(im, float) + np.nan
         bpmask[(dq & 1)==1] = 1
-        ax.imshow(bpmask, vmin=0, vmax=1.5, cmap=matplotlib.cm.inferno, origin=origin)
+        ax.imshow(bpmask, vmin=0, vmax=1.5, cmap=matplotlib.cm.inferno, origin=origin, extent=extent)
 
     ax.set_title(os.path.basename(filename))
     #ax.xaxis.set_ticks([])
@@ -928,21 +1024,26 @@ def display_one_guider_image(filename,  ax=None, use_dq=False,
                 color='yellow',
                 transform=ax.transAxes,
                 verticalalignment='top')
-        if orientation=='raw':
-            ax.text(0.99, 0.99, f'detector raw orientation',
-                color='yellow',
-                transform=ax.transAxes,
-                verticalalignment='top', horizontalalignment='right')
+        ax.text(0.99, 0.99, f'detector raw orientation' if orientation=='raw' else 'science orientation',
+            color='yellow',
+            transform=ax.transAxes,
+            verticalalignment='top', horizontalalignment='right')
 
     if return_model:
         return model
 
 
-def show_all_gs_images(filenames, guidemode='ID'):
+def show_all_gs_images(filenames, guidemode='ID', orientation='raw'):
     """Show a set of GS ID/Acq images, notionally all from the same visit
 
     Displays a grid of plots up to 3x3 for the 3 candidates times 3 attempts each
 
+    Parameters
+    ----------
+    guidemode : str
+        ID, ACQ1, ACQ2, TRACK, or FG
+    orientation : str
+        'raw' for FGS detector raw coordinates, like OSS on board, or 'sci' for science frame on the ground
     """
 
     print(f"Found a total of {len(filenames)} {guidemode} images for that observation.")
@@ -952,7 +1053,7 @@ def show_all_gs_images(filenames, guidemode='ID'):
 
     print(f'Loading and plotting {guidemode} images...')
     fig, axes = plt.subplots(figsize=(16,6*nrows), nrows=nrows, ncols=ncols,
-                            gridspec_kw={'wspace': 0.01,
+                            gridspec_kw={'wspace': 0.1,
                                          'left': 0.05,
                                          'right': 0.97,
                                          'top': 0.90,
@@ -964,13 +1065,13 @@ def show_all_gs_images(filenames, guidemode='ID'):
 
     for i, filename in enumerate(filenames):
         if guidemode=='ID':
-            display_one_id_image(filename, ax=axesf[i], orientation='raw', count=i)
+            display_one_id_image(filename, ax=axesf[i], orientation=orientation, count=i)
         else:
-            display_one_guider_image(filename, ax=axesf[i], count=i)
+            display_one_guider_image(filename, ax=axesf[i], count=i, orientation=orientation)
 
 
-        if np.mod(i,3):
-            axesf[i].set_yticklabels([])
+        #if np.mod(i,3):
+        #    axesf[i].set_yticklabels([])
 
     for extra_ax in axesf[i+1:]:
         extra_ax.set_axis_off()
@@ -1092,3 +1193,104 @@ def which_guider_used(visitid, guidemode = 'FINEGUIDE'):
     else:
         guider_used = None
     return guider_used
+
+def visit_guiding_timeline(visitid):
+    """ Print out a timeline of guiding events within a visit
+    including exposures and OSS event log messages, and inferred notes on FGS activity success or failure
+    """
+    guiding_file_table = find_all_visit_guiding_files(visitid, autodownload=False)
+
+    filenames = guiding_file_table['Filename']
+
+    # Retrieve the OSS log messages for that visit
+    #visitstart = astropy.io.fits.getheader(filenames[0])['VSTSTART']  # use actual visit start time from header
+    logstart = guiding_file_table[0]['Time Start'] - 2*astropy.units.hour  # guess, padded more than enough for slew times
+    logstop = guiding_file_table[-1]['Time End'] + 10*astropy.units.minute  # guess
+    log = misc_jwst.engdb.get_ictm_event_log(startdate=logstart.isot, enddate=logstop.isot)
+
+    # Extract just the OSS log messages for FGS events during that visit
+    visit_log_table = misc_jwst.engdb.eventtable_extract_visit(log, visitid, verbose=False)
+    fgs_log_table = visit_log_table[[('FGS' in m)  for m in visit_log_table['Message']]]
+
+    # Cast Time column to astropy Time object
+    fgs_log_table['Time'] = astropy.time.Time(fgs_log_table['Time'] )
+
+    ### Iterate over files and OSS log messages to print in an interspersed sequence
+
+    current_attitude_state = None
+    detected_dither = False
+
+    i_time = 0
+
+    for i in range(len(guiding_file_table)):
+        fn = filenames[i]
+        try:
+            next_fn = filenames[i+1]
+        except IndexError:
+            next_fn = '_none_'
+        time = guiding_file_table[i]['Time Start']
+
+
+        _, this_step, _ = fn.split('_', maxsplit=2)
+        _, next_step, _ = next_fn.split('_', maxsplit=2)
+
+        # Simple logic to check through the flow of activities and see if it looks as it should
+        # for nominal successful guiding, or not.
+        # CAVEAT: Probably needs more checking and logic for edge cases. Doesn't handle moving targets yet
+        if this_step=='gs-id':
+            if next_step=='gs-acq1':
+                msg = f"FGS ID on GS {fn[20]} successful"  # TODO update logic for GS ID, actually this will count from 1 to 9
+                current_attitude_state = 'ID'
+            else:
+                msg = "FGS ID failed"
+        elif this_step=='gs-acq1':
+            if next_step=='gs-acq2':
+                msg = f"Acq1 at {current_attitude_state} attitude successful"
+            else:
+                msg = "Acq1 failed"
+        elif this_step=='gs-acq2':
+            if current_attitude_state=='ID':  # acq2 at ID attitude should be followed by Acq1 at Sci attitude
+                if next_step=='gs-acq1':
+                    msg = f"Acq2 at {current_attitude_state} attitude successful"
+                    current_attitude_state = 'Sci'
+                else:
+                    msg = "Acq2 failed"
+            elif current_attitude_state in ['Sci', 'dither'] :  # acq2 at Sci or dither attitude should be followed by Track
+                if next_step=='gs-track':
+                    msg = f"Acq2 at {current_attitude_state} attitude successful"
+                else:
+                    msg = "Acq2 failed"
+
+        elif this_step=='gs-track':
+            if next_step=='gs-fg':
+                msg = f"Track successful"
+        elif this_step=='gs-fg':
+            _, prev_step, _ = filenames[i-1].split('_', maxsplit=2)
+            if prev_step != 'gs-fg':
+                msg = 'Fine Guide started'
+            else:
+                msg = " ... FG continued"
+            if next_step != 'gs-fg' and i != len(filenames)-1:
+                detected_dither = True
+                current_attitude_state = 'dither'
+        else:
+            msg = ""
+
+        # Print any OSS log messages that occurred before this image
+        while(fgs_log_table[i_time]['Time'].iso < time):
+            print(f"{fgs_log_table[i_time]['Time'].iso}    OSS: {fgs_log_table[i_time]['Message']}")
+            i_time += 1
+
+        print(f"{time.iso}\t\t{msg:35s}\t{fn:50s}")
+
+        if detected_dither:
+            print(f"{guiding_file_table[i]['Time End'].iso}\t\t--Stop FG, for Dither move--")
+            detected_dither = False
+
+        prev_step=this_step
+
+    # Print any remaining messages at the end
+    while(i_time < len(fgs_log_table)):
+        print(f"{fgs_log_table[i_time]['Time'].iso}\t   OSS: { fgs_log_table[i_time]['Message']}")
+        i_time += 1
+
