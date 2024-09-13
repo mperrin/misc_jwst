@@ -4,7 +4,11 @@ import os
 import numpy as np
 
 import astropy, astropy.table
+import astropy.units as u
+
+import astroquery
 from astroquery.mast import Mast
+from astroquery.mast import Observations
 import requests
 
 import logging
@@ -254,3 +258,43 @@ def _query_program_visit_times_by_inst(program, instrument, verbose=False):
 
     visit_times= set(visit_times)
     return list(visit_times)
+
+
+def summarize_jwst_observations(targname, radius='30s', exclude_ta=True):
+    """Search MAST for JWST obs of a target, in all modes, including upcoming approved planned observations
+
+    Returns a nested dictionary, ordered by instrument_mode, then program ID, then filter
+
+    Parameters
+    ----------
+    targname : str
+        target name, for SIMBAD coords query
+    radius : str
+        cone search radius, as a string with units parsable by astropy.coordinates
+    exclude_ta : bool
+        should Target Acquisition exposures be excluded from the results?
+    """
+
+    obstable = Observations.query_criteria(
+            obs_collection='JWST',
+            objectname=targname,
+            radius=radius
+            )
+
+    has_obs = dict()
+
+    for row in obstable:
+        mode = row['instrument_name']
+        filters = str(row['filters'])
+        proposal = row['proposal_id']
+        if exclude_ta and '/TA' in mode:
+            continue
+
+        if mode not in has_obs:
+            has_obs[mode] = dict()
+        if proposal not in has_obs[mode]:
+            has_obs[mode][proposal] = set()
+        has_obs[mode][proposal].add(filters)
+
+    sorted_results_dict = dict(sorted(has_obs.items()))
+    return sorted_results_dict
