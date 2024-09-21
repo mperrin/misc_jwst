@@ -136,6 +136,12 @@ def jwstops_guiding_timeline(visitid):
     misc_jwst.guiding_analyses.visit_guiding_timeline(visitid)
 
 
+def jwstops_guiding_performance(visitid):
+    import misc_jwst.guiding_analyses
+    visitid = misc_jwst.utils.get_visitid(visitid)  # handle either input format
+    misc_jwst.guiding_analyses.guiding_performance_plot(visitid=visitid, save=True)
+
+
 def jwstops_durations(visitid, lookback=7*u.day):
     visitid = misc_jwst.utils.get_visitid(visitid)  # handle either input format
     print(f"Retrieving OSS visit log for {visitid}...")
@@ -240,6 +246,7 @@ def jwstops_main():
     parser.add_argument('-v', '--visitlog',  help='retrieve OSS visit log for this visit (within previous week).')
     parser.add_argument('-g', '--guiding',  help='retrieve and plot guiding ID/ACQ/Track images for this visit (within previous week).')
     parser.add_argument('-G', '--guiding_timeline',  help='retrieve log timeline of guiding events and images for this visit.')
+    parser.add_argument('-P', '--guiding_performance',  help='plot guiding performance for this visit.')
     parser.add_argument('-d', '--durations',  help='retrieve OSS visit event durations for this visit (within previous week).')
     parser.add_argument('-r', '--range',  default=48.0, help='Set time range in hours forward/back for displaying schedules. (default = 48 hours)')
 
@@ -255,6 +262,9 @@ def jwstops_main():
         jwstops_guiding(args.guiding)
     if args.guiding_timeline:
         jwstops_guiding_timeline(args.guiding_timeline)
+    if args.guiding_performance:
+        jwstops_guiding_performance(args.guiding_performance)
+
 
     if args.durations:
         jwstops_durations(args.durations)
