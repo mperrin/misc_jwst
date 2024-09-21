@@ -1097,6 +1097,11 @@ def retrieve_and_display_id_images(sci_filename=None, progid=None, obs=None, vis
     filenames = find_guiding_id_file(sci_filename=sci_filename,
                                                       progid=progid, obs=obs, visit=visit)
 
+    if filenames[0].endswith('uncal.fits'):
+        print("Warning, can only find _uncal.fits images in MAST. Guide data not yet processed through pipeline fully. Please try again later")
+        print(filenames)
+        return
+
     show_all_gs_images(filenames)
     visit_id = fits.getheader(filenames[0],ext=0)['VISIT_ID']
     fig = plt.gcf()
@@ -1127,6 +1132,17 @@ def retrieve_and_display_guider_images(visitid=None, progid=None, obs=None, visi
         visit = int(visitid[9:12])
 
     filenames = find_visit_guiding_files(visitid=visitid, guidemode=guidemode,)
+
+    if filenames is None or len(filenames)==0:
+        print(f"Warning, could not find any image files for {guidemode} for that observation")
+        return
+
+    if filenames[0].endswith('uncal.fits'):
+        print("Warning, can only find _uncal.fits images in MAST. Guide data not yet processed through pipeline fully. Please try again later")
+        for fn in filenames:
+            print("\t"+fn)
+        return
+
 
     show_all_gs_images(filenames, guidemode=guidemode)
     visit_id = fits.getheader(filenames[0],ext=0)['VISIT_ID']
@@ -1239,7 +1255,7 @@ def visit_guiding_timeline(visitid):
         # CAVEAT: Probably needs more checking and logic for edge cases. Doesn't handle moving targets yet
         if this_step=='gs-id':
             if next_step=='gs-acq1':
-                msg = f"FGS ID on GS {fn[20]} successful"  # TODO update logic for GS ID, actually this will count from 1 to 9
+                msg = f"FGS ID on GS try {fn[20]} successful"  # TODO update logic for GS ID, actually this will count from 1 to 9
                 current_attitude_state = 'ID'
             else:
                 msg = "FGS ID failed"
