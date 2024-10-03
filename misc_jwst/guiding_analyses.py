@@ -201,6 +201,8 @@ def find_visit_guiding_files(visitid, guidemode='FINEGUIDE', verbose=True, autod
         'filters': set_params(keywords)
         }
 
+    if verbose:
+        print(params)
     # Run the web service query. This uses the specialized, lower-level webservice for the
     # guidestar queries: https://mast.stsci.edu/api/v0/_services.html#MastScienceInstrumentKeywordsGuideStar
 
@@ -546,7 +548,7 @@ def guiding_performance_plot(sci_filename=None, visitid=None, verbose=True, save
 
 
 def guiding_dithers_plot(visitid, verbose=True, save=False, alpha=0.2,
-                             ignore_ta_exposures=True):
+                             ignore_ta_exposures=True, ):
     """Generate a plot showing the guiding dither pattern during a visit
 
 
@@ -654,7 +656,12 @@ def guiding_dithers_plot(visitid, verbose=True, save=False, alpha=0.2,
 
 
     leg = ax.legend(fontsize='small')
-    for lh in leg.legendHandles:
+    try:
+        legendhandles = leg.legend_handles  # current matplotlib
+    except AttributeError:
+        legendhandles = leg.legendHandles  # older, deprecated
+
+    for lh in legendhandles:
         lh.set_alpha(1)
 
     ax.set_title(f"Guide Star Centroid Positions during {visitid} dithers", fontweight='bold', fontsize=18)
@@ -685,16 +692,26 @@ def guiding_dithers_plot(visitid, verbose=True, save=False, alpha=0.2,
 
 
 
-def guiding_performance_jitterball(sci_filename, fov_size = 8, nbins=50, verbose=True, save=False):
+def guiding_performance_jitterball(sci_filename, visitid=None, gs_filename=None, fov_size = 8, nbins=50, verbose=True, save=False):
     """Generate a plot showing the guiding jitter during an exposure
 
 
     """
 
-    # Retrieve the guiding packet file from MAST
-    gs_fns = find_relevant_guiding_file(sci_filename)
+    if gs_filename is None:
+        # Retrieve the guiding packet file(s) from MAST
+        if visitid:
+            import misc_jwst.utils
+            visitid = misc_jwst.utils.get_visitid(visitid)  # handle either input format, VPPPPPOOOVVV or PPPP:O:V
+            visit_mode = True
+            gs_fns = find_visit_guiding_files(visitid, verbose=verbose)
+        else:
+            visit_mode = False
+            gs_fns = find_relevant_guiding_file(sci_filename)
 
-    gs_fn = gs_fns[0]
+        gs_fn = gs_fns[0]
+    else:
+        gs_fn = gs_filename
 
     # Determine start and end times for the exposure
     with fits.open(sci_filename) as sci_hdul:
@@ -795,7 +812,17 @@ def guiding_performance_jitterball(sci_filename, fov_size = 8, nbins=50, verbose
     ax_histx.hist(xoffsets, bins=bins)
     ax_histy.hist(yoffsets, bins=bins, orientation='horizontal')
 
-    outname = f'guidingball_{gs_fn_base}.pdf'
+
+    xstd = xoffsets.std()
+    ystd = yoffsets.std()
+    xmean = xoffsets.mean()
+    ymean = yoffsets.mean()
+    ax_histx.text(0.5, 0.98, f'mean: {ystd:.3f}\n$\\sigma$: {ystd:.3f}', horizontalalignment='center', verticalalignment='top')
+    ax_histy.text(0.02, 0.5, f'mean: {xstd:.3f}\n$\\sigma$: {xstd:.3f}', horizontalalignment='left', verticalalignment='center')
+
+
+
+    outname = f'guidingjitterball_{gs_fn_base}.pdf'
 
     if save:
         plt.savefig(outname)
@@ -944,7 +971,7 @@ def display_one_id_image(filename, destripe = True, smooth=True, ax=None,
 
 def display_one_guider_image(filename,  ax=None, use_dq=False,
                          show_metadata=True, count=0,
-                         orientation='sci', return_model=False):
+                         orientation='sci', return_model=False, cube_slice=None):
     """Display a JWST Guiding Acq image
 
     Displays on a asinh stretch
@@ -958,6 +985,9 @@ def display_one_guider_image(filename,  ax=None, use_dq=False,
     return_model : bool
         Optional, return the image model if you want to do some further image manipulations
         (for efficiency to avoid reloading it multiple times)
+
+    cube_slice : int
+        For TRACK or FG cubes, which slice of the datacube to show
     """
 
     model = jwst.datamodels.open(filename)
@@ -966,13 +996,28 @@ def display_one_guider_image(filename,  ax=None, use_dq=False,
     if model.data.ndim == 3 and 'track' in filename:
         # The star location in track images may move over time, by design.
         # So just take and display one slice here, rather than trying to average over many
-        im = model.data[0]
+        if cube_slice is None:
+            cube_slice = 0
+        elif cube_slice == -1:
+            cube_slice = model.data.shape[0]-1
+        im = model.data[cube_slice]
+        cubemode = True
+        cubelabel = f"frame {cube_slice+1} of {model.data.shape[0]}"
     elif model.data.ndim == 3 and 'track' not in filename:
         # for fine guide images we can average over time, generally  (*small caveat for SGD subpix dithers)
+        if cube_slice is None:
+            im = model.data.mean(axis=0)
+            cubelabel = f"average of {model.data.shape[0]} frames"
+        else:
+            if cube_slice == -1:
+                cube_slice = model.data.shape[0] - 1
+            im = model.data[cube_slice]
+            cubelabel = f"frame {cube_slice + 1} of {model.data.shape[0]}"
 
-        im = model.data.mean(axis=0)
+        cubemode = True
     else:
         im = model.data
+        cubemode = False
     dq = model.dq
 
     if ax is None:
@@ -1024,7 +1069,8 @@ def display_one_guider_image(filename,  ax=None, use_dq=False,
                 color='yellow',
                 transform=ax.transAxes,
                 verticalalignment='top')
-        ax.text(0.99, 0.99, f'detector raw orientation' if orientation=='raw' else 'science orientation',
+        ax.text(0.99, 0.99, (f'detector raw orientation' if orientation=='raw' else 'science orientation') +
+                                                                                   ("\n"+cubelabel if cubemode else ""),
             color='yellow',
             transform=ax.transAxes,
             verticalalignment='top', horizontalalignment='right')
@@ -1155,7 +1201,7 @@ def retrieve_and_display_guider_images(visitid=None, progid=None, obs=None, visi
         print(f"Output saved to {outname}")
 
 
-def visit_guider_images(visitid):
+def visit_guider_images(visitid, ):
     """ Retrieve and display to PDF all the guider images in a visit
 
     See functions retrieve_and_display_id_images and retrieve_and_display_guider_images for further details.
@@ -1310,3 +1356,169 @@ def visit_guiding_timeline(visitid):
         print(f"{fgs_log_table[i_time]['Time'].iso}\t   OSS: { fgs_log_table[i_time]['Message']}")
         i_time += 1
 
+
+def visit_guiding_sequence(visitid, verbose=True):
+    """ Plot complete image sequence of guiding events within a visit
+    including exposures and OSS event log messages, and inferred notes on FGS activity success or failure
+
+    This is a high-level function that invokes much of the other code in this submodule.
+    """
+    visitid = misc_jwst.utils.get_visitid(visitid)  # handle either input format
+
+    guiding_file_table = find_all_visit_guiding_files(visitid, autodownload=False)
+    print(len(guiding_file_table))
+
+    if len(guiding_file_table) == 0:
+        raise RuntimeError("No guiding files found in MAST for that visit")
+
+    filenames = guiding_file_table['Filename']
+
+    # Retrieve the OSS log messages for that visit
+    # visitstart = astropy.io.fits.getheader(filenames[0])['VSTSTART']  # use actual visit start time from header
+    logstart = guiding_file_table[0][
+                   'Time Start'] - 2 * astropy.units.hour  # guess, padded more than enough for slew times
+    logstop = guiding_file_table[-1]['Time End'] + 10 * astropy.units.minute  # guess
+
+    if verbose:
+        print(logstart.isot, logstop.isot)
+    log = misc_jwst.engdb.get_ictm_event_log(startdate=logstart.isot, enddate=logstop.isot)
+
+    # Extract just the OSS log messages for FGS events during that visit
+    visit_log_table = misc_jwst.engdb.eventtable_extract_visit(log, visitid, verbose=False)
+    fgs_log_table = visit_log_table[[('FGS' in m) for m in visit_log_table['Message']]]
+
+    # Cast Time column to astropy Time object
+    fgs_log_table['Time'] = astropy.time.Time(fgs_log_table['Time'])
+
+    ### Iterate over files and OSS log messages to print in an interspersed sequence
+
+    current_attitude_state = None
+    detected_dither = False
+
+    i_time = 0
+
+    outname = f'guiding_sequence_{visitid}.pdf'
+    with PdfPages(outname) as pdf:
+
+        for i in range(len(guiding_file_table)):
+            fn = filenames[i]
+            # print(fn)
+            dlstatus, dlmessage, dlurl = mast.Observations.download_file("mast:JWST/product/" + fn)
+            # print(dlstatus, dlmessage, dlurl)
+            # TODO - replace/rework for proprietary data
+            try:
+                next_fn = filenames[i + 1]
+            except IndexError:
+                next_fn = '_none_'
+            time = guiding_file_table[i]['Time Start']
+            time_end = guiding_file_table[i]['Time End']
+
+            _, this_step, _ = fn.split('_', maxsplit=2)
+            _, next_step, _ = next_fn.split('_', maxsplit=2)
+
+            # Simple logic to check through the flow of activities and see if it looks as it should
+            # for nominal successful guiding, or not.
+            # CAVEAT: Probably needs more checking and logic for edge cases. Doesn't handle moving targets yet
+            if this_step == 'gs-id':
+                if next_step == 'gs-acq1':
+                    msg = f"FGS ID on GS try {fn[20]} successful"  # TODO update logic for GS ID, actually this will count from 1 to 9
+                    current_attitude_state = 'ID'
+                else:
+                    msg = "FGS ID failed"
+            elif this_step == 'gs-acq1':
+                if next_step == 'gs-acq2':
+                    msg = f"Acq1 at {current_attitude_state} attitude successful"
+                else:
+                    msg = "Acq1 failed"
+            elif this_step == 'gs-acq2':
+                if current_attitude_state == 'ID':  # acq2 at ID attitude should be followed by Acq1 at Sci attitude
+                    if next_step == 'gs-acq1':
+                        msg = f"Acq2 at {current_attitude_state} attitude successful"
+                        current_attitude_state = 'Sci'
+                    else:
+                        msg = "Acq2 failed"
+                elif current_attitude_state in ['Sci',
+                                                'dither']:  # acq2 at Sci or dither attitude should be followed by Track
+                    if next_step == 'gs-track':
+                        msg = f"Acq2 at {current_attitude_state} attitude successful"
+                    else:
+                        msg = "Acq2 failed"
+
+            elif this_step == 'gs-track':
+                if next_step == 'gs-fg':
+                    msg = f"Track successful"
+            elif this_step == 'gs-fg':
+                _, prev_step, _ = filenames[i - 1].split('_', maxsplit=2)
+                if prev_step != 'gs-fg':
+                    msg = 'Fine Guide started'
+                else:
+                    msg = " ... FG continued"
+                if next_step != 'gs-fg' and i != len(filenames) - 1:
+                    detected_dither = True
+                    current_attitude_state = 'dither'
+            else:
+                msg = ""
+
+            msgstack = ""
+            # Print any OSS log messages that occurred before this image
+            while (fgs_log_table[i_time]['Time'].iso < time):
+                msgstack += f"{fgs_log_table[i_time]['Time'].iso}    OSS: {fgs_log_table[i_time]['Message']}\n"
+                i_time += 1
+            msgstack += f"{time.iso} FGS Exposure Start\n"
+            if this_step != 'gs-fg':
+                # for ID, Acq, Track print the exp end time before the success/fail message
+                msgstack += f"{time_end.iso} FGS Exposure End\n"
+
+            msgstack += "\n" + msg + "\n\n"
+
+            if this_step == 'gs-fg':
+                # for FG print the exp end time after the success/fail message
+                # todo, also do this for moving target visits too, which stay in track
+                msgstack += f"{time_end.iso} FGS Exposure End\n"
+
+            if detected_dither:
+                msgstack += f"\nFine Guide stopped, for Dither move.\n"
+                detected_dither = False
+            elif i == len(guiding_file_table) - 1:
+                # Print any remaining messages at the end
+                while (i_time < len(fgs_log_table)):
+                    msgstack += f"{fgs_log_table[i_time]['Time'].iso}   OSS: {fgs_log_table[i_time]['Message']}\n"
+                    i_time += 1
+
+
+                    # Display the current image
+            fig = plt.figure()
+            gskw = {'left': 0.05, 'right': 0.99, 'bottom': 0.05}
+
+            if this_step == 'gs-id':
+                fig, axes = plt.subplots(figsize=(16, 9), ncols=2, gridspec_kw=gskw)
+                axes[1].set_visible(False)
+                display_one_id_image(fn, ax=axes[0], count=i, orientation='raw')
+
+            elif this_step.startswith('gs-acq'):
+                fig, axes = plt.subplots(figsize=(16, 9), ncols=2, gridspec_kw=gskw)
+                axes[1].set_visible(False)
+                display_one_guider_image(fn, ax=axes[0], count=i, orientation='raw')
+            else:
+                fig, axes = plt.subplots(figsize=(16, 9), ncols=2, nrows=2, gridspec_kw=gskw)
+                axes[0, 1].set_visible(False)
+                axes[1, 1].set_visible(False)
+                display_one_guider_image(fn, ax=axes[0, 0], count=i, orientation='raw', cube_slice=0)
+                display_one_guider_image(fn, ax=axes[1, 0], count=i, orientation='raw', cube_slice=-1)
+            fig.text(0.5, 0.84, msgstack, verticalalignment='top')
+
+            if i == 0:
+                fig.suptitle(f"Guiding Image Sequence during {visitid}", fontsize=20, fontweight='bold')
+
+            pdf.savefig(fig)
+
+            prev_step = this_step
+
+        guiding_performance_plot(visitid=visitid)
+        pdf.savefig(plt.gcf())
+        # guiding_performance_jitterball(visitid=visitid)
+        # pdf.savefig(plt.gcf())
+        # guiding_performance_dithers_plot(visitid=visitid)
+        # pdf.savefig(plt.gcf())
+
+    print("Output to " + outname)
