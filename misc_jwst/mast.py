@@ -15,6 +15,7 @@ import logging
 log = logging.getLogger(__name__)
 log.setLevel(logging.INFO)
 
+import misc_jwst.utils
 
 __all__ = ['jwst_keywords_query']
 
@@ -110,6 +111,7 @@ def visit_which_instrument(visitid):
     # Annoyingly, that query interface doesn't return start/end times
     instruments = [val.split('/')[0] for val in set(obs['instrument_name'])]
 
+    # TODO - check more carefully for cases with multiple instruments in parallel
     import warnings
     with warnings.catch_warnings():
         warnings.simplefilter('ignore')  # Because we expect at least some of these may have a warning about no results found
@@ -144,11 +146,23 @@ def query_visit_time(visitid, verbose=False):
         return None, None
 
 
-def get_visit_exposure_times(visitid):
+def get_visit_exposure_times(visitid, extra_columns=""):
     """ Return a table with start and end times for all exposures within a visit"""
+    visitid = misc_jwst.utils.get_visitid(visitid)  # handle either input format
     inst = visit_which_instrument(visitid)
+
+    # Set some extra keywords per instrument
+    if extra_columns:
+        inst_mode_columns = {'NIRCAM': "filter,pupil",
+                             'NIRISS': "filter,pupil",
+                             'NIRSPEC': 'filter,grating',
+                             'MIRI': 'filter,detector,band'}
+        extra_query_columns = ", "+inst_mode_columns[inst]
+    else:
+        extra_query_columns = ""
+
     res = jwst_keywords_query(inst, visit_id=visitid[1:],
-                                       columns = 'filename, visit_id, date_beg_mjd, date_end_mjd, vststart_mjd, visitend_mjd, productLevel, exp_type')
+                                       columns = 'filename, visit_id, date_beg_mjd, date_end_mjd, vststart_mjd, visitend_mjd, productLevel, exp_type, effexptm' + extra_query_columns)
     for colname in ['date_beg_mjd', 'date_end_mjd', 'vststart_mjd', 'visitend_mjd']:
         times = astropy.time.Time(res[colname], format='mjd')
         times.format='iso'
@@ -158,8 +172,17 @@ def get_visit_exposure_times(visitid):
     exps_level2 = res[np.asarray(res['productLevel'].value) != '3']
     # mask out some redundant files
     fns = exps_level2['filename']
-    ignore_derived_products_mask = [('s3d' not in fn) and ('x1d' not in fn) for fn in fns]
+    ignore_derived_products_mask = [('s3d' not in fn) and ('x1d' not in fn) and ('i2d' not in fn) for fn in fns]
     exps_level2  = exps_level2[ignore_derived_products_mask]
+
+    if extra_columns:
+        keys = inst_mode_columns[inst].split(',')
+        exps_level2['optical_elements'] = ["+".join([str(row[k]) for k in keys])  for row in exps_level2]
+
+        # improve handling for MIRI MRS & imager exps, each of which has some missing masked field
+        if inst=='MIRI':
+            exps_level2['optical_elements'] = [v.replace('+MIRIMAGE+--', '').replace('--+', '') for v in exps_level2['optical_elements']]
+
 
     return exps_level2
 

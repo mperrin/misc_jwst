@@ -9,12 +9,18 @@ import astropy.io.fits as fits
 import numpy as np
 import scipy
 import functools
+import warnings
 
 import matplotlib, matplotlib.pyplot as plt
+from matplotlib.backends.backend_pdf import PdfPages
+
+
+
+import mpl_scatter_density  # adds projection='scatter_density'
 
 import pysiaf
 import jwst.datamodels
-import misc_jwst.utils
+import misc_jwst.utils, misc_jwst.mast
 
 def mast_retrieve_guiding_files(filenames, out_dir='.', verbose=True):
     """Download one or more guiding data products from MAST
@@ -692,7 +698,8 @@ def guiding_dithers_plot(visitid, verbose=True, save=False, alpha=0.2,
 
 
 
-def guiding_performance_jitterball(sci_filename, visitid=None, gs_filename=None, fov_size = 8, nbins=50, verbose=True, save=False):
+def guiding_performance_jitterball(sci_filename, visitid=None, gs_filename=None, fov_size = 8, nbins=50, verbose=True, save=False,
+                                   t_beg=None, t_end=None, ax=None):
     """Generate a plot showing the guiding jitter during an exposure
 
 
@@ -701,7 +708,6 @@ def guiding_performance_jitterball(sci_filename, visitid=None, gs_filename=None,
     if gs_filename is None:
         # Retrieve the guiding packet file(s) from MAST
         if visitid:
-            import misc_jwst.utils
             visitid = misc_jwst.utils.get_visitid(visitid)  # handle either input format, VPPPPPOOOVVV or PPPP:O:V
             visit_mode = True
             gs_fns = find_visit_guiding_files(visitid, verbose=verbose)
@@ -709,14 +715,15 @@ def guiding_performance_jitterball(sci_filename, visitid=None, gs_filename=None,
             visit_mode = False
             gs_fns = find_relevant_guiding_file(sci_filename)
 
-        gs_fn = gs_fns[0]
     else:
-        gs_fn = gs_filename
+        gs_fns = [gs_filename, ]
+    gs_fn = gs_fns[0]
 
     # Determine start and end times for the exposure
-    with fits.open(sci_filename) as sci_hdul:
-        t_beg = astropy.time.Time(sci_hdul[0].header['DATE-BEG'])
-        t_end = astropy.time.Time(sci_hdul[0].header['DATE-END'])
+    if t_beg is None or t_end is None:
+        with fits.open(sci_filename) as sci_hdul:
+            t_beg = astropy.time.Time(sci_hdul[0].header['DATE-BEG'])
+            t_end = astropy.time.Time(sci_hdul[0].header['DATE-END'])
 
     # We may have multiple GS filenames returned, in the case where the data is split into several segments
     # If so, concatenat them
@@ -748,23 +755,25 @@ def guiding_performance_jitterball(sci_filename, visitid=None, gs_filename=None,
 
 
     # Create Plots
-    fig= plt.figure(figsize=(8,8),)
+    if ax is None:
+        subplot_mode = False
+        fig= plt.figure(figsize=(8,8),)
 
 
-    # Add a gridspec with two rows and two columns and a ratio of 1 to 4 between
-    # the size of the marginal axes and the main axes in both directions.
-    # Also adjust the subplot parameters for a square plot.
-    gs = fig.add_gridspec(2, 2,  width_ratios=(4, 1), height_ratios=(1, 4),
-                          left=0.1, right=0.9, bottom=0.1, top=0.9,
-                          wspace=0.05, hspace=0.05)
-    # Create the Axes.
-    ax = fig.add_subplot(gs[1, 0])
-    ax_histx = fig.add_subplot(gs[0, 0], sharex=ax)
-    ax_histy = fig.add_subplot(gs[1, 1], sharey=ax)
-    # Draw the scatter plot and marginals.
-    #scatter_hist(x, y, ax, ax_histx, ax_histy)
-
-
+        # Add a gridspec with two rows and two columns and a ratio of 1 to 4 between
+        # the size of the marginal axes and the main axes in both directions.
+        # Also adjust the subplot parameters for a square plot.
+        gs = fig.add_gridspec(2, 2,  width_ratios=(4, 1), height_ratios=(1, 4),
+                              left=0.1, right=0.9, bottom=0.1, top=0.9,
+                              wspace=0.05, hspace=0.05)
+        # Create the Axes.
+        ax = fig.add_subplot(gs[1, 0], projection='scatter_density')
+        ax_histx = fig.add_subplot(gs[0, 0], sharex=ax)
+        ax_histy = fig.add_subplot(gs[1, 1], sharey=ax)
+        # Draw the scatter plot and marginals.
+        #scatter_hist(x, y, ax, ax_histx, ax_histy)
+    else:
+        subplot_mode = True
 
     min_time = np.min([ptimes.plot_date.min(), ctimes.plot_date.min()])
     max_time = np.max([ptimes.plot_date.max(), ctimes.plot_date.max()])
@@ -781,50 +790,58 @@ def guiding_performance_jitterball(sci_filename, visitid=None, gs_filename=None,
     ymean = ypos.mean()
 
     rpos = np.sqrt(xpos**2+ypos**2)
-    print(np.std(rpos))
+    #print(np.std(rpos))
 
     xoffsets = (xpos-xmean)*1000
     yoffsets = (ypos-ymean)*1000
 
-    ax.scatter(xoffsets, yoffsets, alpha = 0.8, marker='+')
+    if ax.name =='scatter_density':
+        # if the axes is set up for this projection, we can use mpl_scatter_density
+        scattercmap = misc_jwst.utils.colormap_viridis_white_background()
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")  # scatter_density may emit warnings about NaNs; we don't care. 
+            ax.scatter_density(xoffsets, yoffsets, alpha = 0.8, cmap=scattercmap)
+    else:
+        # otherwise use regular scatterplot
+        ax.scatter(xoffsets, yoffsets, alpha = 0.8, marker='+')
     ax.set_aspect('equal')
 
     ax.set_xlim(-fov_size/2, fov_size/2)
     ax.set_ylim(-fov_size/2, fov_size/2)
-    ax.set_xlabel("GS Centroid Offset X [milliarcsec]", fontsize=18)
-    ax.set_ylabel("GS Centroid Offset Y [milliarcsec]", fontsize=18)
-
-
-    fig.suptitle(f"Guiding during {os.path.basename(sci_filename)}\n", fontweight='bold', fontsize=12)
+    ax.set_xlabel("GS Centroid Offset X [milliarcsec]", fontsize=9 if subplot_mode else 18)
+    ax.set_ylabel("GS Centroid Offset Y [milliarcsec]", fontsize=9 if subplot_mode else 18)
 
 
     for rad in [1,2,3]:
-        ax.add_artist(plt.Circle( (0,0), rad, fill=False, color='gray', ls='--'))
+        color = 'darkorange' if rad==1 else 'gray'
+        ax.add_artist(plt.Circle( (0,0), rad, fill=False, color=color, ls='--'))
         if rad<fov_size/2:
-            ax.text(0, rad+0.1, f"{rad} mas", color='gray')
-
-
-    # Draw histograms
-    ax_histx.tick_params(axis="x", labelbottom=False)
-    ax_histy.tick_params(axis="y", labelleft=False)
-
-    bins = np.linspace(-fov_size/2, fov_size/2, nbins)
-    ax_histx.hist(xoffsets, bins=bins)
-    ax_histy.hist(yoffsets, bins=bins, orientation='horizontal')
-
+            ax.text(0, rad+0.1, f"{rad} mas", color=color, fontweight='bold' if rad==1 else None)
 
     xstd = xoffsets.std()
     ystd = yoffsets.std()
     xmean = xoffsets.mean()
     ymean = yoffsets.mean()
-    ax_histx.text(0.5, 0.98, f'mean: {ystd:.3f}\n$\\sigma$: {ystd:.3f}', horizontalalignment='center', verticalalignment='top')
-    ax_histy.text(0.02, 0.5, f'mean: {xstd:.3f}\n$\\sigma$: {xstd:.3f}', horizontalalignment='left', verticalalignment='center')
+    if not subplot_mode:
+        fig.suptitle(f"Guiding during {os.path.basename(sci_filename)}\n", fontweight='bold', fontsize=12)
+        # Draw histograms
+        ax_histx.tick_params(axis="x", labelbottom=False)
+        ax_histy.tick_params(axis="y", labelleft=False)
 
+        bins = np.linspace(-fov_size/2, fov_size/2, nbins)
+        ax_histx.hist(xoffsets, bins=bins)
+        ax_histy.hist(yoffsets, bins=bins, orientation='horizontal')
 
+        ax_histx.text(0.5, 0.98, f'mean: {ymean:.3f}\n$\\sigma$: {ystd:.3f}', horizontalalignment='center', verticalalignment='top')
+        ax_histy.text(0.02, 0.5, f'mean: {xmean:.3f}\n$\\sigma$: {xstd:.3f}', horizontalalignment='left', verticalalignment='center')
+    else:
+        #ax.text(0.5, 0.02, f'Y mean: {ymean:.3f}   $\\sigma$: {ystd:.3f}  mas\nX mean: {xmean:.3f}   $\\sigma$: {xstd:.3f}   mas', horizontalalignment='center', verticalalignment='bottom',
+        ax.text(0.5, 0.02, f'Y jitter $\\sigma$: {ystd:.3f} mas\nX jitter $\\sigma$: {xstd:.3f} mas', horizontalalignment='center', verticalalignment='bottom',
+                transform=ax.transAxes)
 
-    outname = f'guidingjitterball_{gs_fn_base}.pdf'
 
     if save:
+        outname = f'guidingjitterball_{gs_fn_base}.pdf'
         plt.savefig(outname)
         if verbose:
             print(f' ==> {outname}')
@@ -1357,7 +1374,7 @@ def visit_guiding_timeline(visitid):
         i_time += 1
 
 
-def visit_guiding_sequence(visitid, verbose=True):
+def visit_guiding_sequence(visitid, verbose=True, include_performance=True):
     """ Plot complete image sequence of guiding events within a visit
     including exposures and OSS event log messages, and inferred notes on FGS activity success or failure
 
@@ -1365,13 +1382,18 @@ def visit_guiding_sequence(visitid, verbose=True):
     """
     visitid = misc_jwst.utils.get_visitid(visitid)  # handle either input format
 
-    guiding_file_table = find_all_visit_guiding_files(visitid, autodownload=False)
-    print(len(guiding_file_table))
+    # Retrieve guider exposure filenames and times
+    print(f"Retrieving guiding files for {visitid}")
+    guiding_file_table = find_all_visit_guiding_files(visitid, autodownload=True)
 
     if len(guiding_file_table) == 0:
         raise RuntimeError("No guiding files found in MAST for that visit")
 
     filenames = guiding_file_table['Filename']
+
+    # Retrieve science exposure filenames and times
+    exposure_table = misc_jwst.mast.get_visit_exposure_times(visitid, extra_columns=True)
+    exposure_table.sort(['date_beg_mjd', 'filename'])
 
     # Retrieve the OSS log messages for that visit
     # visitstart = astropy.io.fits.getheader(filenames[0])['VSTSTART']  # use actual visit start time from header
@@ -1379,8 +1401,6 @@ def visit_guiding_sequence(visitid, verbose=True):
                    'Time Start'] - 2 * astropy.units.hour  # guess, padded more than enough for slew times
     logstop = guiding_file_table[-1]['Time End'] + 10 * astropy.units.minute  # guess
 
-    if verbose:
-        print(logstart.isot, logstop.isot)
     log = misc_jwst.engdb.get_ictm_event_log(startdate=logstart.isot, enddate=logstop.isot)
 
     # Extract just the OSS log messages for FGS events during that visit
@@ -1402,10 +1422,6 @@ def visit_guiding_sequence(visitid, verbose=True):
 
         for i in range(len(guiding_file_table)):
             fn = filenames[i]
-            # print(fn)
-            dlstatus, dlmessage, dlurl = mast.Observations.download_file("mast:JWST/product/" + fn)
-            # print(dlstatus, dlmessage, dlurl)
-            # TODO - replace/rework for proprietary data
             try:
                 next_fn = filenames[i + 1]
             except IndexError:
@@ -1459,6 +1475,7 @@ def visit_guiding_sequence(visitid, verbose=True):
             else:
                 msg = ""
 
+            #----- Annotate FGS exposure times and OSS log messages.
             msgstack = ""
             # Print any OSS log messages that occurred before this image
             while (fgs_log_table[i_time]['Time'].iso < time):
@@ -1485,10 +1502,8 @@ def visit_guiding_sequence(visitid, verbose=True):
                     msgstack += f"{fgs_log_table[i_time]['Time'].iso}   OSS: {fgs_log_table[i_time]['Message']}\n"
                     i_time += 1
 
-
-                    # Display the current image
-            fig = plt.figure()
-            gskw = {'left': 0.05, 'right': 0.99, 'bottom': 0.05}
+            #------ Display the current image
+            gskw = {'left': 0.05, 'right': 0.99, 'bottom': 0.1, 'top': 0.95}
 
             if this_step == 'gs-id':
                 fig, axes = plt.subplots(figsize=(16, 9), ncols=2, gridspec_kw=gskw)
@@ -1502,23 +1517,68 @@ def visit_guiding_sequence(visitid, verbose=True):
             else:
                 fig, axes = plt.subplots(figsize=(16, 9), ncols=2, nrows=2, gridspec_kw=gskw)
                 axes[0, 1].set_visible(False)
-                axes[1, 1].set_visible(False)
+                if this_step == 'gs-track':
+                    axes[1, 1].set_visible(False)
+                elif this_step == 'gs-fg':
+                    # special case, replace the axis with one configured to use scatter-density "projection"
+                    # can't change the projection of an existing axes, so we have to replace it.
+                    axes[1, 1].remove()
+                    axes[1, 1] = fig.add_subplot(224, projection='scatter_density')
+
                 display_one_guider_image(fn, ax=axes[0, 0], count=i, orientation='raw', cube_slice=0)
                 display_one_guider_image(fn, ax=axes[1, 0], count=i, orientation='raw', cube_slice=-1)
-            fig.text(0.5, 0.84, msgstack, verticalalignment='top')
 
+            fig.text(0.5, 0.84, msgstack, verticalalignment='top')
             if i == 0:
                 fig.suptitle(f"Guiding Image Sequence during {visitid}", fontsize=20, fontweight='bold')
 
+            #----- Annotate science exposure times and filenames
+            #      and accumulate sci exp times for possible use in jitterball plots during FG, below
+            this_guide_subset = (exposure_table['date_beg_mjd'] > time) & (exposure_table['date_end_mjd'] < time_end)
+
+            sci_file_stack = ""
+            already_plotted_exptimes_start = set()
+            already_plotted_exptimes_end = set()
+            for row in exposure_table[this_guide_subset]:
+                if row['date_beg_mjd']in already_plotted_exptimes_start:
+                    continue
+                sci_file_stack += f"{row['date_beg_mjd'].isot}   {row['filename'][0:25]}    {row['exp_type']}, {row['optical_elements']}, {row['effexptm']:.1f} s\n"
+                already_plotted_exptimes_start.add(row['date_beg_mjd'])
+                already_plotted_exptimes_end.add(row['date_end_mjd'])
+            if sci_file_stack != "":
+                sci_file_stack = "Science exposures during this guide:\n\n"+sci_file_stack
+            fig.text(0.5, 0.60, sci_file_stack, verticalalignment='top', color='darkgreen')
+
+            # Display jitterball for FG images. 
+            # Do this after the sci image listing
+            if this_step.startswith('gs-fg'):
+
+                print(fn)
+                # For some reason this is not working as intended. Problematic t_start /t_end metadata on some files??
+                if  len(already_plotted_exptimes_start) >0:
+                    jitter_t_beg = min(list(already_plotted_exptimes_start))
+                    jitter_t_end = max(list(already_plotted_exptimes_end))
+                    # print(f'setting jitterball times for {fn} from sci exp: {jitter_t_beg.mjd}, {jitter_t_end}')
+                    jit_title = "LOS measurements during those science exposures"
+                else:
+                    jitter_t_beg = time
+                    jitter_t_end = time_end
+                    #print(f'setting jitterball times from entire FG file: {jitter_t_beg}, {jitter_t_end}')
+                    jit_title = "LOS measurements during this entire fine guide"
+                guiding_performance_jitterball(None, gs_filename=fn, visitid=visitid, t_beg=jitter_t_beg, t_end=jitter_t_end, ax=axes[1,1])
+                axes[1,1].set_title(jit_title)
+
+
             pdf.savefig(fig)
+            plt.close(fig)
 
             prev_step = this_step
 
-        guiding_performance_plot(visitid=visitid)
-        pdf.savefig(plt.gcf())
-        # guiding_performance_jitterball(visitid=visitid)
-        # pdf.savefig(plt.gcf())
-        # guiding_performance_dithers_plot(visitid=visitid)
-        # pdf.savefig(plt.gcf())
+        if include_performance:
+            guiding_performance_plot(visitid=visitid)
+            pdf.savefig(plt.gcf())
+            # pdf.savefig(plt.gcf())
+            # guiding_performance_dithers_plot(visitid=visitid)
+            # pdf.savefig(plt.gcf())
 
     print("Output to " + outname)

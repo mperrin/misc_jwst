@@ -311,13 +311,17 @@ def parse_eventlog_to_table(eventlog):
 
 def eventtable_extract_visit(event_table, selected_visit_id, verbose=False):
     """Find just the log message rows for a given visit"""
-    vmessages = [m.startswith(f'VISIT {selected_visit_id}') for m in event_table['Message']]
+    visit_id = misc_jwst.utils.get_visitid(selected_visit_id)  # handle either input format
+
+    vmessages = [m.startswith(f'VISIT {visit_id}') for m in event_table['Message']]
 
     if verbose:
         print(event_table[vmessages])
 
     line_indices = np.where(vmessages)[0]
-    if len(line_indices) == 2:
+    if len(line_indices) == 0:
+        raise RuntimeError(f"No messages were found for visit {visit_id} within the search time period.")
+    elif len(line_indices) == 2:
         istart, istop = line_indices
         return event_table[istart:istop+1]
     else: # visit ongoing, has not ended as of end of available log

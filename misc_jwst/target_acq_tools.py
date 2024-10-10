@@ -99,10 +99,18 @@ def get_visit_ta_image(visitid, verbose=True, kind='cal', inst='NIRCam', index=0
 
 
 #### Functions for image comparisons
-def show_ta_img(visitid, ax=None, return_handles=False, inst='NIRCam', mark_reference_point=True, mark_apername=True):
+def show_ta_img(visitid, ax=None, return_handles=False, inst='NIRCam', mark_reference_point=True, mark_apername=True, miri_ta_expnum=None, **kwargs):
     """ Retrieve and display a target acq image"""
 
-    hdul = get_visit_ta_image(visitid, inst=inst)
+    hdul = get_visit_ta_image(visitid, inst=inst, **kwargs)
+
+
+    if inst.upper()=='MIRI' and isinstance(hdul, list) and not isinstance(hdul, fits.HDUList):
+        if miri_ta_expnum is None:
+            raise ValueError(f"You must specify miri_ta_expnum=<n> to select which of {len(hdul)} TA exposures to show (using 1-based indexing)")
+        else:
+            hdul = hdul[miri_ta_expnum-1]
+
 
     ta_img = hdul['SCI'].data
     mask = np.isfinite(ta_img)
@@ -146,7 +154,6 @@ def show_ta_img(visitid, ax=None, return_handles=False, inst='NIRCam', mark_refe
 
     if return_handles:
         return hdul, ax, norm, cmap, bglevel
-
 
 
 

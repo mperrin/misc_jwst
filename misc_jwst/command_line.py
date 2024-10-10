@@ -114,12 +114,21 @@ def jwstops_schedule(time_range=48*u.hour):
 def jwstops_visitlog(visitid, lookback=7*u.day):
     visitid = misc_jwst.utils.get_visitid(visitid)  # handle either input format
     print(f"Retrieving OSS visit log for {visitid}...")
-    now = astropy.time.Time.now()
-    start_time = now - lookback
 
-    log = engdb.get_ictm_event_log(startdate=start_time)
+    # First, try within the prior week
+    try:
+        now = astropy.time.Time.now()
+        start_time = now - lookback
 
-    visit_table = engdb.eventtable_extract_visit(log, visitid, verbose=False)
+        log = engdb.get_ictm_event_log(startdate=start_time)
+        visit_table = engdb.eventtable_extract_visit(log, visitid, verbose=False)
+
+    except RuntimeError: # If we can't find a log in this week, look back further
+        from . import mast
+        start_time, end_time = mast.query_visit_time(visitid)
+        log = engdb.get_ictm_event_log(startdate=start_time, enddate=end_time)
+        visit_table = engdb.eventtable_extract_visit(log, visitid, verbose=False)
+
     for row in visit_table:
         print(row['Time'][:-4], '\t', row['Message'])
 
@@ -127,7 +136,7 @@ def jwstops_visitlog(visitid, lookback=7*u.day):
 def jwstops_guiding(visitid, lookback=7*u.day):
     import misc_jwst.guiding_analyses
     visitid = misc_jwst.utils.get_visitid(visitid)  # handle either input format
-    misc_jwst.guiding_analyses.visit_guider_images(visitid)
+    misc_jwst.guiding_analyses.visit_guiding_sequence(visitid)
 
 
 def jwstops_guiding_timeline(visitid):
@@ -140,6 +149,7 @@ def jwstops_guiding_performance(visitid):
     import misc_jwst.guiding_analyses
     visitid = misc_jwst.utils.get_visitid(visitid)  # handle either input format
     misc_jwst.guiding_analyses.guiding_performance_plot(visitid=visitid, save=True)
+    misc_jwst.guiding_analyses.guiding_performance_jitterball(visitid=visitid, save=True)
 
 
 def jwstops_durations(visitid, lookback=7*u.day):
