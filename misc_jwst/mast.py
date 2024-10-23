@@ -31,6 +31,17 @@ def jwst_keywords_query(instrument, columns=None, all_columns=False, verbose=Fal
     """JWST keyword query
 
     See https://mast.stsci.edu/api/v0/_jwst_inst_keywd.html for keyword field reference
+
+    For more examples of using this API, see also:
+      https://spacetelescope.github.io/mast_notebooks/notebooks/JWST/SI_keyword_exoplanet_search/SI_keyword_exoplanet_search.html
+
+    Query Syntax Guide
+    ------------------
+    To set a SET of values, set some parameter to a list
+        filter = ['F200W', 'F212N']
+    To set a RANGE of values, set some parameter to a dict with min and max
+        date_obs_mjd = {'min': 60000.1, 'max': 61000.5}
+
     """
     svc_table = {'MIRI':'Mast.Jwst.Filtered.Miri',
                  'NIRCAM': 'Mast.Jwst.Filtered.NIRCam',
@@ -41,7 +52,7 @@ def jwst_keywords_query(instrument, columns=None, all_columns=False, verbose=Fal
     service = svc_table[instrument.upper()]
 
     if columns is None:
-        columns = 'filename, program, observtn, visit_id, category, template, exp_type, vststart_mjd, visitend_mjd, bstrtime'
+        columns = 'filename, program, observtn, visit_id, category, template, exp_type, vststart_mjd, visitend_mjd, bstrtime, dataURI'
 
     keywords = dict()
 
@@ -150,6 +161,10 @@ def get_visit_exposure_times(visitid, extra_columns=""):
     """ Return a table with start and end times for all exposures within a visit"""
     visitid = misc_jwst.utils.get_visitid(visitid)  # handle either input format
     inst = visit_which_instrument(visitid)
+
+    if inst is None:
+        print(f"warning, no science data in MAST for visit {visitid}")
+        return None
 
     # Set some extra keywords per instrument
     if extra_columns:

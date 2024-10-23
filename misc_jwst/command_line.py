@@ -15,6 +15,7 @@ _short_modes = {'MIRI Medium Resolution Spectroscopy': 'MIRI MRS',
                'NIRCam Wide Field Slitless Spectroscopy': 'NIRCam WFSS',
                'NIRCam Engineering Imaging': 'NRC Eng Img',
                'NIRCam Coronagraphic Imaging': 'NIRCam Coron',
+               'NIRISS External Calibration': 'NIRISS Ext Cal',
                'NIRISS Single-Object Slitless Spectroscopy': 'NIRISS SOSS',
                'NIRISS Wide Field Slitless Spectroscopy': 'NIRISS WFSS',
                'NIRSpec MultiObject Spectroscopy': 'NRS MOS',
@@ -22,6 +23,7 @@ _short_modes = {'MIRI Medium Resolution Spectroscopy': 'MIRI MRS',
                'NIRSpec Bright Object Time Series': 'NRS BOTS',
                'NIRSpec Fixed Slit Spectroscopy': 'NRS FS',
                'WFSC NIRCam Fine Phasing': "WFSC",
+               'FGS External Calibration': "FGS Ext Cal",
               }
 
 
@@ -211,7 +213,7 @@ def jwstops_overview(lookback=48*u.hour):
             mode = _short_modes.get(str(long_mode), str(long_mode))
             delta_time = row['visit_fgs_start'] - sched_start_time
 
-            print(f"{row['VISIT ID']}\t{row['visit_fgs_start'].iso[:-4]}\t{delta_time.to_value(u.hour):+.2f}\t{mode:10s}\t{str(schedrow['TARGET NAME'])}\t{row['notes']}")
+            print(f"{row['VISIT ID']}\t{row['visit_fgs_start'].iso[:-4]}\t{delta_time.to_value(u.hour):+.2f}\t{mode:10s}\t{str(schedrow['TARGET NAME']):15s}\t{row['notes']}")
         except IndexError:
             print(f"{row['VISIT ID']}\t{row['visit_fgs_start'].iso[:-4]}\t??\t??\t??\t{row['notes']}")
 
