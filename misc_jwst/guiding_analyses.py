@@ -21,52 +21,9 @@ import mpl_scatter_density  # adds projection='scatter_density'
 import pysiaf
 import jwst.datamodels
 import misc_jwst.utils, misc_jwst.mast
+from misc_jwst.mast import mast_retrieve_files
 
-def mast_retrieve_guiding_files(filenames, out_dir='.', verbose=True):
-    """Download one or more guiding data products from MAST
 
-    If the file is already present in the specified local directory, it's not downloaded again.
-
-    """
-
-    mast_url='https://mast.stsci.edu/api/v0.1/Download/file'
-    uri_prefix = 'mast:JWST/product/'
-
-    outputs = []
-
-    mast_api_token = os.environ.get('MAST_API_TOKEN')
-    if mast_api_token is not None:
-        headers=dict(Authorization=f"token {mast_api_token}")
-    else:
-        headers=None
-
-    for p in filenames:
-        outfile = os.path.join(out_dir, p)
-
-        if os.path.isfile(outfile):
-            if verbose:
-                print("ALREADY DOWNLOADED: ", outfile)
-            outputs.append(outfile)
-            continue
-
-        r = requests.get(mast_url, params=dict(uri=uri_prefix+p), stream=True,
-                    # include the following argument if authentication is needed
-                    #headers=dict(Authorization=f"token {mast_api_token}"))
-                         headers=headers,
-                        )
-        r.raise_for_status()
-        with open(outfile, 'wb') as fd:
-            for data in r.iter_content(chunk_size=1024000):
-                fd.write(data)
-
-        if not os.path.isfile(outfile):
-            if verbose:
-                print("ERROR: " + outfile + " failed to download.")
-        else:
-            if verbose:
-                print("COMPLETE: ", outfile)
-            outputs.append(outfile)
-    return outputs
 
 def set_params(parameters):
     """Utility function for making dicts used in MAST queries"""
@@ -161,7 +118,7 @@ def find_relevant_guiding_file(sci_filename, verbose=True):
     else:
         products_to_fetch = [products[wmatch],]
 
-    outfiles = mast_retrieve_guiding_files(products_to_fetch)
+    outfiles = mast_retrieve_files(products_to_fetch)
 
     return outfiles
 
@@ -236,7 +193,7 @@ def find_visit_guiding_files(visitid, guidemode='FINEGUIDE', verbose=True, autod
             print("   ", p)
 
     if autodownload:
-        outfiles = mast_retrieve_guiding_files(products)
+        outfiles = mast_retrieve_files(products)
         return outfiles
     else:
         return products
@@ -351,7 +308,7 @@ def find_all_visit_guiding_files(visitid, verbose=False, exclude_stacked=True, a
     guiding_file_table = astropy.table.Table([filenames, times_start, times_end], names = ['Filename', 'Time Start', 'Time End'])
 
     if autodownload:
-        outfiles = mast_retrieve_guiding_files(guiding_file_table['Filename'])
+        outfiles = mast_retrieve_files(guiding_file_table['Filename'])
 
     return guiding_file_table
 
@@ -1393,7 +1350,8 @@ def visit_guiding_sequence(visitid, verbose=True, include_performance=True):
 
     # Retrieve science exposure filenames and times
     exposure_table = misc_jwst.mast.get_visit_exposure_times(visitid, extra_columns=True)
-    exposure_table.sort(['date_beg_mjd', 'filename'])
+    if exposure_table is not None:
+        exposure_table.sort(['date_beg_mjd', 'filename'])
 
     # Retrieve the OSS log messages for that visit
     # visitstart = astropy.io.fits.getheader(filenames[0])['VSTSTART']  # use actual visit start time from header
@@ -1574,7 +1532,7 @@ def visit_guiding_sequence(visitid, verbose=True, include_performance=True):
 
             prev_step = this_step
 
-        if include_performance:
+        if include_performance and exposure_table is not None:
             guiding_performance_plot(visitid=visitid)
             pdf.savefig(plt.gcf())
             # pdf.savefig(plt.gcf())

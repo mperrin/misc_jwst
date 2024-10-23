@@ -336,3 +336,52 @@ def summarize_jwst_observations(targname, radius='30s', exclude_ta=True):
 
     sorted_results_dict = dict(sorted(has_obs.items()))
     return sorted_results_dict
+
+
+def mast_retrieve_files(filenames, out_dir='.', verbose=True):
+    """Download one or more JWST data products from MAST, by filename
+
+    If the file is already present in the specified local directory, it's not downloaded again.
+
+    Note, this function DOES support using a MAST_API_TOKEN to retrieve proprietary data
+
+    """
+
+    mast_url='https://mast.stsci.edu/api/v0.1/Download/file'
+    uri_prefix = 'mast:JWST/product/'
+
+    outputs = []
+
+    mast_api_token = os.environ.get('MAST_API_TOKEN')
+    if mast_api_token is not None:
+        headers=dict(Authorization=f"token {mast_api_token}")
+    else:
+        headers=None
+
+    for p in filenames:
+        outfile = os.path.join(out_dir, p)
+
+        if os.path.isfile(outfile):
+            if verbose:
+                print("ALREADY DOWNLOADED: ", outfile)
+            outputs.append(outfile)
+            continue
+
+        r = requests.get(mast_url, params=dict(uri=uri_prefix+p), stream=True,
+                    # include the following argument if authentication is needed
+                    #headers=dict(Authorization=f"token {mast_api_token}"))
+                         headers=headers,
+                        )
+        r.raise_for_status()
+        with open(outfile, 'wb') as fd:
+            for data in r.iter_content(chunk_size=1024000):
+                fd.write(data)
+
+        if not os.path.isfile(outfile):
+            if verbose:
+                print("ERROR: " + outfile + " failed to download.")
+        else:
+            if verbose:
+                print("COMPLETE: ", outfile)
+            outputs.append(outfile)
+    return outputs
