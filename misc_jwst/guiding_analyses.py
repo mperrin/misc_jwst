@@ -752,6 +752,14 @@ def guiding_performance_jitterball(sci_filename, visitid=None, gs_filename=None,
     xoffsets = (xpos-xmean)*1000
     yoffsets = (ypos-ymean)*1000
 
+    xstd = xoffsets.std()
+    ystd = yoffsets.std()
+    xmean = xoffsets.mean()
+    ymean = yoffsets.mean()
+
+    if xstd>fov_size or ystd>fov_size:
+        fov_size = max(xoffsets.max(), yoffsets.max())
+
     if ax.name =='scatter_density':
         # if the axes is set up for this projection, we can use mpl_scatter_density
         scattercmap = misc_jwst.utils.colormap_viridis_white_background()
@@ -771,14 +779,10 @@ def guiding_performance_jitterball(sci_filename, visitid=None, gs_filename=None,
 
     for rad in [1,2,3]:
         color = 'darkorange' if rad==1 else 'gray'
-        ax.add_artist(plt.Circle( (0,0), rad, fill=False, color=color, ls='--'))
+        ax.add_artist(plt.Circle( (0,0), rad, fill=False, color='darkorange' if rad==1 else 'gray', ls='--'))
         if rad<fov_size/2:
-            ax.text(0, rad+0.1, f"{rad} mas", color=color, fontweight='bold' if rad==1 else None)
+            ax.text(0, rad+0.1, f"{rad} mas", color='black' if rad==1 else 'gray', fontweight='bold' if rad==1 else None)
 
-    xstd = xoffsets.std()
-    ystd = yoffsets.std()
-    xmean = xoffsets.mean()
-    ymean = yoffsets.mean()
     if not subplot_mode:
         fig.suptitle(f"Guiding during {os.path.basename(sci_filename)}\n", fontweight='bold', fontsize=12)
         # Draw histograms
@@ -795,6 +799,11 @@ def guiding_performance_jitterball(sci_filename, visitid=None, gs_filename=None,
         #ax.text(0.5, 0.02, f'Y mean: {ymean:.3f}   $\\sigma$: {ystd:.3f}  mas\nX mean: {xmean:.3f}   $\\sigma$: {xstd:.3f}   mas', horizontalalignment='center', verticalalignment='bottom',
         ax.text(0.5, 0.02, f'Y jitter $\\sigma$: {ystd:.3f} mas\nX jitter $\\sigma$: {xstd:.3f} mas', horizontalalignment='center', verticalalignment='bottom',
                 transform=ax.transAxes)
+
+    if max(xstd, ystd) > 2:
+        ax.text(0.5, 0.98, f'WARNING: Guiding Jitter is\nsignificantly larger than usual!', horizontalalignment='center', verticalalignment='top',
+                transform=ax.transAxes, fontweight='bold', color='darkred')
+
 
 
     if save:
@@ -1492,20 +1501,21 @@ def visit_guiding_sequence(visitid, verbose=True, include_performance=True):
 
             #----- Annotate science exposure times and filenames
             #      and accumulate sci exp times for possible use in jitterball plots during FG, below
-            this_guide_subset = (exposure_table['date_beg_mjd'] > time) & (exposure_table['date_end_mjd'] < time_end)
+            if exposure_table is not None:
+                this_guide_subset = (exposure_table['date_beg_mjd'] > time) & (exposure_table['date_end_mjd'] < time_end)
 
-            sci_file_stack = ""
-            already_plotted_exptimes_start = set()
-            already_plotted_exptimes_end = set()
-            for row in exposure_table[this_guide_subset]:
-                if row['date_beg_mjd']in already_plotted_exptimes_start:
-                    continue
-                sci_file_stack += f"{row['date_beg_mjd'].isot}   {row['filename'][0:25]}    {row['exp_type']}, {row['optical_elements']}, {row['effexptm']:.1f} s\n"
-                already_plotted_exptimes_start.add(row['date_beg_mjd'])
-                already_plotted_exptimes_end.add(row['date_end_mjd'])
-            if sci_file_stack != "":
-                sci_file_stack = "Science exposures during this guide:\n\n"+sci_file_stack
-            fig.text(0.5, 0.60, sci_file_stack, verticalalignment='top', color='darkgreen')
+                sci_file_stack = ""
+                already_plotted_exptimes_start = set()
+                already_plotted_exptimes_end = set()
+                for row in exposure_table[this_guide_subset]:
+                    if row['date_beg_mjd']in already_plotted_exptimes_start:
+                        continue
+                    sci_file_stack += f"{row['date_beg_mjd'].isot}   {row['filename'][0:25]}    {row['exp_type']}, {row['optical_elements']}, {row['effexptm']:.1f} s\n"
+                    already_plotted_exptimes_start.add(row['date_beg_mjd'])
+                    already_plotted_exptimes_end.add(row['date_end_mjd'])
+                if sci_file_stack != "":
+                    sci_file_stack = "Science exposures during this guide:\n\n"+sci_file_stack
+                fig.text(0.5, 0.60, sci_file_stack, verticalalignment='top', color='darkgreen')
 
             # Display jitterball for FG images. 
             # Do this after the sci image listing
