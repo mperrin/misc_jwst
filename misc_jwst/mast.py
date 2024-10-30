@@ -115,6 +115,7 @@ def visit_which_instrument(visitid):
 
     Note, does not (yet?) handle parallels in a good way. Just returns at most 1 instrument
     """
+    visitid = misc_jwst.utils.get_visitid(visitid)  # handle either input format
     program = visitid[1:6]
 
     from astroquery.mast import Observations

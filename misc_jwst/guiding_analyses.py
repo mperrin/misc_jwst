@@ -16,7 +16,6 @@ from matplotlib.backends.backend_pdf import PdfPages
 
 
 
-import mpl_scatter_density  # adds projection='scatter_density'
 
 import pysiaf
 import jwst.datamodels
@@ -661,7 +660,6 @@ def guiding_performance_jitterball(sci_filename, visitid=None, gs_filename=None,
 
 
     """
-
     if gs_filename is None:
         # Retrieve the guiding packet file(s) from MAST
         if visitid:
@@ -1032,7 +1030,11 @@ def display_one_guider_image(filename,  ax=None, use_dq=False,
 
     mean, median, sigma = astropy.stats.sigma_clipped_stats(im, )
 
-    norm = matplotlib.colors.AsinhNorm(vmin = median-sigma, vmax=im.max(), linear_width=im.max()/1e3)
+    vmax = np.nanmax(im)
+    if not vmax > 0:
+        print(f"Error, vmax is {vmax}. Overriding to 1e3")
+        vmax=1e3
+    norm = matplotlib.colors.AsinhNorm(vmin = median-sigma, vmax=vmax, linear_width=vmax/1e3)
 
     extent = [startx-0.5, startx+im.shape[1]+0.5, starty-0.5, starty+im.shape[0]+0.5]
 
@@ -1346,6 +1348,13 @@ def visit_guiding_sequence(visitid, verbose=True, include_performance=True):
 
     This is a high-level function that invokes much of the other code in this submodule.
     """
+    try:
+        import mpl_scatter_density  # adds projection='scatter_density'
+        HAS_MPL_SCATTER_DENSITY = True
+    except ImportError:
+        HAS_MPL_SCATTER_DENSITY = False
+
+
     visitid = misc_jwst.utils.get_visitid(visitid)  # handle either input format
 
     # Retrieve guider exposure filenames and times
@@ -1486,7 +1495,7 @@ def visit_guiding_sequence(visitid, verbose=True, include_performance=True):
                 axes[0, 1].set_visible(False)
                 if this_step == 'gs-track':
                     axes[1, 1].set_visible(False)
-                elif this_step == 'gs-fg':
+                elif this_step == 'gs-fg' and HAS_MPL_SCATTER_DENSITY:
                     # special case, replace the axis with one configured to use scatter-density "projection"
                     # can't change the projection of an existing axes, so we have to replace it.
                     axes[1, 1].remove()

@@ -58,7 +58,7 @@ def get_ictm_event_log(startdate='2022-02-01', enddate=None, mast_api_token=None
     lines = response.content.decode('utf-8').splitlines()
 
     if return_as_table:
-        return parse_eventlog_to_table(lines)
+        return parse_eventlog_to_table(lines, label='Message')
     else:
         return lines
 
@@ -174,7 +174,7 @@ def visit_start_end_times(eventlog, visitid=None, return_table=False, verbose=Tr
             outputs['visit_fgs_start'].append(str(vid_fgs_start))
             outputs['visitend'].append('T'.join(time.split())[:-3])
             outputs['duration'].append(-1)
-            outputs['notes'].append('Still ongoing at end of available log')
+            outputs['notes'].append('Still ongoing at end of available log.')
 
 
 
@@ -192,6 +192,7 @@ def visit_start_end_times(eventlog, visitid=None, return_table=False, verbose=Tr
 
     if return_table:
         t = astropy.table.Table(list(outputs.values()), names = outputs.keys() )
+        t["notes"] = t["notes"].astype("<U100")  # ensure we can stick in quite long text notes, if needed
         t['visitstart'] = astropy.time.Time(t['visitstart'])
         t['visitend'] = astropy.time.Time(t['visitend'])
         try:
@@ -208,6 +209,7 @@ def visit_start_end_times(eventlog, visitid=None, return_table=False, verbose=Tr
                     # some issue with the visit, such that it halted before taking FGSMAIN.
                     if 'visit halted' not in t[i]['notes']:
                         print(f'could not find FGSMAIN start time in log for visit {t[i]["visitid"]}')
+                    t[i]['notes'] = t[i]['notes'] + " No FGSMAIN start time in log."
             t['visit_fgs_start'] = astropy.time.Time(t['visit_fgs_start'])
 
         return(t)
@@ -286,10 +288,13 @@ def extract_oss_TA_centroids(eventlog, selected_visit_id):
         raise RuntimeError("Could not parse TA centroid coordinates in that visit log")
 
 
-def parse_eventlog_to_table(eventlog):
+def parse_eventlog_to_table(eventlog, label=None):
     """Parse an eventlog as returned from the EngDB to an astropy table, for ease of use
 
     """
+
+    if label is None:
+        label = "Value"
     timestr = []
     mjd = []
     messages = []
@@ -303,9 +308,14 @@ def parse_eventlog_to_table(eventlog):
     mjd = np.asarray(mjd[1:], float)
     messages = messages[1:]
 
+    try:
+        messages = np.asarray(messages, float)
+    except ValueError:
+        pass # it's string type so leave it as string
+
     # assemble into astropy table
     event_table = astropy.table.Table((timestr, mjd, messages),
-                                      names=("Time", "MJD", "Message"))
+                                      names=("Time", "MJD", label))
     return event_table
 
 
