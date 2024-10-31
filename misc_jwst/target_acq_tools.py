@@ -21,7 +21,8 @@ _nrc_ta_dither_offsets_pix = {0: [0,0],
                               1: [2, 4],
                               2: [2+3, 4-5]}
 # sign convention for DET frame relative to SCI frame
-_nrc_ta_dither_sign = {'NRCALONG': [1, -1],}
+_nrc_ta_dither_sign = {'NRCALONG': [1, -1],
+                       'NRCA3': [1,1]}  # TODO check this. But not directly relevant since WFS TA doesn't use dithers
 
 
 @functools.lru_cache
@@ -303,7 +304,7 @@ def nrc_ta_comparison(visitid, inst='NIRCam', verbose=True, show_centroids=True,
         axes[0].scatter(cen[1], cen[0], color='red', marker='+', s=50)
         axes[0].text(cen[1], cen[0], '  webbpsf', color='red', verticalalignment='center')
 
-        axes[0].text(0.95, 0.10, oss_centroid_text+f'\n webbpsf centroid: {cen[1]:.2f}, {cen[0]:.2f}',
+        axes[0].text(0.95, 0.10, oss_centroid_text+f'\n webbpsf measure_centroid: {cen[1]:.2f}, {cen[0]:.2f}',
                      horizontalalignment='right', verticalalignment='bottom',
                      transform=axes[0].transAxes,
                      color='white')
@@ -440,12 +441,8 @@ def nrc_ta_analysis(visitid, inst='NIRCam', verbose=True, show_centroids=True, *
                 axes[i_ta_image].text(targ_coords_pix[0], targ_coords_pix[1]+2, 'WCS', color='magenta', verticalalignment='bottom', horizontalalignment='center')
                 wcs_text = f'Expected from WCS: {targ_coords_pix[0]:.2f}, {targ_coords_pix[1]:.2f}'
 
-                if verbose:
-                    print(f"Star coords from WCS: {targ_coords_pix}")
-                    if oss_cen_sci_pythonic is not None:
-                        print(f"WCS offset =  {np.asarray(targ_coords_pix) - oss_cen_sci_pythonic} pix  (WCS - OSS)")
 
-                        # TODO compute delta RA and dec. Use
+
             except ImportError:
                 oss_centroid_text = ""
                 wcs_text = ""
@@ -474,13 +471,32 @@ def nrc_ta_analysis(visitid, inst='NIRCam', verbose=True, show_centroids=True, *
                 deltapos = (xref - cen[1], yref - cen[0])
                 deltapos_type = 'Intended-webbpsf'
 
-            image_text = f"Pixel coordinates (0-based):         \n{oss_centroid_text}\n webbpsf centroid: {cen[1]:.2f}, {cen[0]:.2f}\n{wcs_text}\n{aperture_text}\n$\\Delta$pos ({deltapos_type}): {deltapos[0]:.2f}, {deltapos[1]:.2f}"
+            image_text = f"Pixel coordinates (0-based):         \n{oss_centroid_text}\n webbpsf measure_centroid: {cen[1]:.2f}, {cen[0]:.2f}\n{wcs_text}\n{aperture_text}\n$\\Delta$pos ({deltapos_type}): {deltapos[0]:.2f}, {deltapos[1]:.2f}"
 
             axes[i_ta_image].text(0.95, 0.04, image_text,
                          horizontalalignment='right', verticalalignment='bottom',
                          transform=axes[i_ta_image].transAxes,
                          color='white')
 
+    if verbose:
+        print(f"Star coords from WCS: {targ_coords_pix}")
+        if oss_cen_sci_pythonic is not None:
+            print(f"WCS offset =  {np.asarray(targ_coords_pix) - oss_cen_sci_pythonic} pix  (WCS - OSS)")
+
+            # TODO compute delta RA and dec. Use
+            # from above we already have targ_coords as the RA and dec of the target star, at the time of the exposure
+            ta_cen_coords = model.meta.wcs.pixel_to_world(*oss_cen_sci_pythonic)
+            print('TARG_COORDS: ', targ_coords)
+            print('TA_CEN_COORDS: ', ta_cen_coords)
+
+            dra, ddec = ta_cen_coords.spherical_offsets_to(targ_coords)
+            print("DRA, DDEC: ", dra, ddec)
+
+            axes[i_ta_image].text(0.95, 0.80,
+                                  f'WCS $\\Delta$RA, $\\Delta$Dec = {dra.to_value(u.arcsec):.3f}, {ddec.to_value(u.arcsec):.3f} arcsec',
+                                  horizontalalignment='right', verticalalignment='bottom',
+                                  transform=axes[i_ta_image].transAxes,
+                                  color='cyan')
 
     if n_ta_images == 1:
         axes[1].set_visible(False)
