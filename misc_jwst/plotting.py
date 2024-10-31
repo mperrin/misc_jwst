@@ -77,7 +77,7 @@ def apertures_to_stcs_region(apertureList, attmat):
 
 
 
-def aladin_setup_plot(datafile, survey="P/DSS2/color"):
+def aladin_setup_plot(datafile, survey="P/2MASS/color", height=800, fov=0.5):
     """Initialize an aladin instance centered on some JWST image
 
     Note - it seems you MUST have the aladin output instance as the last item in a Jupyter cell to have
@@ -89,6 +89,12 @@ def aladin_setup_plot(datafile, survey="P/DSS2/color"):
 
     Then you can use the aladin instance handle in **subsequent** cells to add overlays.
     See https://github.com/cds-astro/ipyaladin/issues/128
+
+    Parameters
+    ----------
+    survey : str
+        Name of an available all-sky HIPS survey in CDS. See http://aladin.cds.unistra.fr/hips/list
+        Some good choices are 'P/2MASS/color', 'P/DSS2/color', 'P/allWISE/color'
     """
 
     with jwst.datamodels.open(datafile) as model:
@@ -96,7 +102,7 @@ def aladin_setup_plot(datafile, survey="P/DSS2/color"):
         target = SkyCoord(model.meta.target.ra, model.meta.target.dec, frame='icrs', unit='deg')
 
     # Create an aladin instance centered there.
-    aladin = ipyaladin.Aladin(height=800, fov=0.5, survey=survey, target=target.to_string())
+    aladin = ipyaladin.Aladin(height=height, fov=fov, survey=survey, target=target.to_string())
     return aladin
 
 def aladin_annotate_data_and_apertures(aladin, datafile):
