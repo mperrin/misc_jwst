@@ -4,6 +4,7 @@ import os
 import matplotlib, matplotlib.pyplot as plt
 import numpy as np
 
+import pysiaf
 import webbpsf
 import scipy
 import astropy
@@ -12,9 +13,19 @@ import astropy.units as u
 import jwst.datamodels, stdatamodels
 
 
+# NIRCam TA Dither Offsets.
+# Values from /PRDOPSSOC-067/TA_dithersXML/Excel/NIRCam_TA_dithers.xlsx
+# Offsets in detector pixels, in the DET frame
+#                        dither_num: [delta_detX, delta_detY]
+_nrc_ta_dither_offsets_pix = {0: [0,0],
+                              1: [2, 4],
+                              2: [2+3, 4-5]}
+# sign convention for DET frame relative to SCI frame
+_nrc_ta_dither_sign = {'NRCALONG': [1, -1],}
+
 
 @functools.lru_cache
-def get_visit_ta_image(visitid, verbose=True, kind='cal', inst='NIRCam', index=0):
+def get_visit_ta_image(visitid, verbose=True, kind='cal', inst='NIRCam', index=0, localpath=None):
     """Retrieve from MAST the NIRCam target acq image for a given visit.
 
     This retrieves an image (or images) from MAST and returns it as a HDUList variable
@@ -69,10 +80,13 @@ def get_visit_ta_image(visitid, verbose=True, kind='cal', inst='NIRCam', index=0
             print(f"TA filename: {filename}")
         import urllib
         mast_file_url = f"https://mast.stsci.edu/api/v0.1/Download/file?uri=mast:JWST/product/{filename}"
-        localpath = f'./{filename}'
-        if os.path.exists(localpath):
+        # use distinct varible names for localpath (input) and local_file_cache_path (internal variable, per filename)
+        local_file_cache_path = localpath if localpath is not None else f'./{filename}'
+        if os.path.exists(local_file_cache_path):
             # If that file has been downloaded to this local working dir, open from there
-            ta_hdul = fits.open(localpath)
+            if verbose:
+                print("Opening file from local path "+local_file_cache_path)
+            ta_hdul = fits.open(local_file_cache_path)
         else:
             try:
                 # Try to open from MAST (this version only works for public-access files)
@@ -85,13 +99,16 @@ def get_visit_ta_image(visitid, verbose=True, kind='cal', inst='NIRCam', index=0
                     mast_api_token = os.environ.get('MAST_API_TOKEN', None)
                     mast_obs = astroquery.mast.ObservationsClass(mast_api_token)
                     uri = f"mast:JWST/product/{filename}"
-                    mast_obs.download_file(uri, local_path=localpath, cache=False)
-                    ta_hdul = astropy.io.fits.open(localpath)
+                    mast_obs.download_file(uri, local_path=local_file_cache_path, cache=False)
+                    ta_hdul = astropy.io.fits.open(local_file_cache_path)
                 else:
                     raise  # re-raise any errors other than 401 for permissions denied
         files_found.append(ta_hdul)
 
     if nfiles==1:
+        if verbose:
+            print("File date:", ta_hdul[0].header['DATE'])
+
         return files_found[0]
     else:
         return files_found
@@ -99,17 +116,25 @@ def get_visit_ta_image(visitid, verbose=True, kind='cal', inst='NIRCam', index=0
 
 
 #### Functions for image comparisons
-def show_ta_img(visitid, ax=None, return_handles=False, inst='NIRCam', mark_reference_point=True, mark_apername=True, miri_ta_expnum=None, **kwargs):
+def show_ta_img(visitid, ax=None, return_handles=False, inst='NIRCam', mark_reference_point=True, mark_apername=True, ta_expnum=None, **kwargs):
     """ Retrieve and display a target acq image"""
 
     hdul = get_visit_ta_image(visitid, inst=inst, **kwargs)
 
-
     if inst.upper()=='MIRI' and isinstance(hdul, list) and not isinstance(hdul, fits.HDUList):
-        if miri_ta_expnum is None:
-            raise ValueError(f"You must specify miri_ta_expnum=<n> to select which of {len(hdul)} TA exposures to show (using 1-based indexing)")
+        if ta_expnum is None:
+            raise ValueError(f"You must specify ta_expnum=<n> to select which of {len(hdul)} TA exposures to show (using 1-based indexing)")
         else:
-            hdul = hdul[miri_ta_expnum-1]
+            hdul = hdul[ta_expnum-1]
+            title_extra = f' exp #{ta_expnum}'
+    elif inst.upper()=='NIRCAM' and isinstance(hdul, list) and not isinstance(hdul, fits.HDUList):
+        if ta_expnum is None:
+            raise ValueError(f"You must specify ta_expnum=<n> to select which of {len(hdul)} TA exposures to show (using 1-based indexing)")
+        else:
+            hdul = hdul[ta_expnum-1]
+            title_extra = f' exp #{ta_expnum}'
+    else:
+        title_extra = ''
 
 
     ta_img = hdul['SCI'].data
@@ -129,7 +154,7 @@ def show_ta_img(visitid, ax=None, return_handles=False, inst='NIRCam', mark_refe
     if ax is None:
         ax = plt.gca()
     ax.imshow(ta_img - bglevel, norm=norm, cmap=cmap, origin='lower')
-    ax.set_title(f"{inst} TA on {visitid}\n{hdul[0].header['DATE-OBS']}")
+    ax.set_title(f"{inst} TA{title_extra} on {visitid}\n{hdul[0].header['DATE-OBS']}")
     ax.set_ylabel("[Pixels]")
     ax.text(0.05, 0.95, hdul[0].header['TARGPROP'],
             color='white', transform=ax.transAxes, verticalalignment='top')
@@ -138,11 +163,17 @@ def show_ta_img(visitid, ax=None, return_handles=False, inst='NIRCam', mark_refe
         import pysiaf
         siaf = pysiaf.Siaf(hdul[0].header['INSTRUME'])
         ap = siaf.apertures[hdul[0].header['APERNAME']]
-        xref_subarr = ap.XSciRef - 1   # siaf uses 1-based counting
-        yref_subarr = ap.YSciRef - 1   # ditto
+        xref = ap.XSciRef - 1   # siaf uses 1-based counting
+        yref = ap.YSciRef - 1   # ditto
 
-        ax.axvline(xref_subarr, color='gray', alpha=0.5)
-        ax.axhline(yref_subarr, color='gray', alpha=0.5)
+        if hdul[0].header['INSTRUME'].upper()=='NIRCAM' and ta_expnum>0:
+            # if there are multiple ta exposures, take into account the dither moves
+            # and the sign needed to go from DET to SCI coordinate frames
+            xref -= _nrc_ta_dither_offsets_pix[ta_expnum-1][0] * _nrc_ta_dither_sign[hdul[0].header['DETECTOR']][0]
+            yref -= _nrc_ta_dither_offsets_pix[ta_expnum-1][1] * _nrc_ta_dither_sign[hdul[0].header['DETECTOR']][1]
+
+        ax.axvline(xref, color='gray', alpha=0.5)
+        ax.axhline(yref, color='gray', alpha=0.5)
     if mark_apername:
         # mark aperture, and which guider was used
         import misc_jwst.guiding_analyses
@@ -157,7 +188,7 @@ def show_ta_img(visitid, ax=None, return_handles=False, inst='NIRCam', mark_refe
 
 
 
-def nrc_ta_comparison(visitid, inst='NIRCam', verbose=True, show_centroids=True):
+def nrc_ta_comparison(visitid, inst='NIRCam', verbose=True, show_centroids=True, **kwargs):
     """ Retrieve a NIRCam target acq image and compare to a simulation
 
     Parameters:
@@ -165,13 +196,16 @@ def nrc_ta_comparison(visitid, inst='NIRCam', verbose=True, show_centroids=True)
     visitid : string
         Visit ID. Should be one of the WFSC visits, starting with a NIRCam target acq, or at least
         some other sort of visit that begins with a NIRCam target acquisition.
+
+    By default it downloads the file from MAST, or looks in the local directory to see if already downloaded.
+    Set localpath=[some path] to search for the file in some other directory or filename.
     """
     from skimage.registration import phase_cross_correlation
 
     fig, axes = plt.subplots(figsize=(10,5), ncols=3)
 
     # Get and plot the observed TA image
-    hdul, ax, norm, cmap, bglevel = show_ta_img(visitid, ax=axes[0], return_handles=True, inst=inst)
+    hdul, ax, norm, cmap, bglevel = show_ta_img(visitid, ax=axes[0], return_handles=True, inst=inst, **kwargs)
     im_obs = hdul['SCI'].data
     im_obs_err = hdul['ERR'].data
     im_obs_dq = hdul['DQ'].data
@@ -246,6 +280,9 @@ def nrc_ta_comparison(visitid, inst='NIRCam', verbose=True, show_centroids=True)
             model = jwst.datamodels.open(hdul)
             targ_coords = astropy.coordinates.SkyCoord(model.meta.target.ra, model.meta.target.dec, frame='icrs', unit=u.deg)
             targ_coords_pix = model.meta.wcs.world_to_pixel(targ_coords)  # returns x, y
+            if verbose:
+                print(f"Target coords: {targ_coords}")
+                print(f"               {targ_coords.to_string('hmsdms', sep=':')}")
             axes[0].scatter(targ_coords_pix[0], targ_coords_pix[1], color='magenta', marker='+', s=50)
             axes[0].text(targ_coords_pix[0], targ_coords_pix[1]+2, 'WCS', color='magenta', verticalalignment='bottom', horizontalalignment='center')
             axes[0].text(0.95, 0.04, f'Expected from WCS: {targ_coords_pix[0]:.2f}, {targ_coords_pix[1]:.2f}',
@@ -256,7 +293,7 @@ def nrc_ta_comparison(visitid, inst='NIRCam', verbose=True, show_centroids=True)
             if verbose:
                 print(f"Star coords from WCS: {targ_coords_pix}")
                 if oss_cen_sci_pythonic is not None:
-                    print(f"WCS offset =  {np.asarray(targ_coords_pix) - oss_cen_sci_pythonic} pix")
+                    print(f"WCS offset =  {np.asarray(targ_coords_pix) - oss_cen_sci_pythonic} pix  (WCS - OSS)")
 
         except ImportError:
             oss_centroid_text = ""
@@ -298,6 +335,166 @@ def nrc_ta_comparison(visitid, inst='NIRCam', verbose=True, show_centroids=True)
 
 
     outname = f'nrc_ta_comparison_{visitid}.pdf'
+    plt.savefig(outname)
+    print(f" => {outname}")
+
+
+def nrc_ta_analysis(visitid, inst='NIRCam', verbose=True, show_centroids=True, **kwargs):
+    """ Retrieve a NIRCam target acq image and analyze TA performance.
+
+    See also nrc_ta_comparison
+
+    Parameters:
+    -----------
+    visitid : string
+        Visit ID. Should be one of the WFSC visits, starting with a NIRCam target acq, or at least
+        some other sort of visit that begins with a NIRCam target acquisition.
+
+    By default it downloads the file from MAST, or looks in the local directory to see if already downloaded.
+    Set localpath=[some path] to search for the file in some other directory or filename.
+    """
+
+    ta_images =    get_visit_ta_image(visitid, inst=inst, **kwargs)
+    if ta_images is None:
+        raise RuntimeError(f"No TA image found for visit {visitid}")
+    elif isinstance(ta_images, astropy.io.fits.HDUList):
+        n_ta_images = 1
+    elif isinstance(ta_images[0], astropy.io.fits.HDUList):
+        n_ta_images = len(ta_images)
+    print(f"Found {n_ta_images} TA images for {visitid} ")
+
+    fig, axes = plt.subplots(figsize=(12,5), ncols=3,)
+
+    # Get and plot the observed TA image
+    for i_ta_image in range(n_ta_images):
+        hdul, ax, norm, cmap, bglevel = show_ta_img(visitid, ax=axes[i_ta_image], return_handles=True, inst=inst,
+                                                    ta_expnum = i_ta_image +1, **kwargs)
+
+        im_obs = hdul['SCI'].data
+        im_obs_err = hdul['ERR'].data
+        im_obs_dq = hdul['DQ'].data
+
+        im_obs_clean = im_obs.copy()
+        im_obs_clean[im_obs_dq & 1] = np.nan  # Mask out any DO_NOT_USE pixels.
+        im_obs_clean = astropy.convolution.interpolate_replace_nans(im_obs, kernel=np.ones((5,5)))
+
+        siaf = pysiaf.Siaf(hdul[0].header['INSTRUME'])
+        ta_aperture = siaf.apertures[hdul[0].header['APERNAME']]
+        xref = ta_aperture.XSciRef - 1   # siaf uses 1-based counting
+        yref = ta_aperture.YSciRef - 1   # ditto
+
+        if hdul[0].header['INSTRUME'].upper()=='NIRCAM' and i_ta_image>0:
+            # if there are multiple ta exposures, take into account the dither moves
+            xref -= _nrc_ta_dither_offsets_pix[i_ta_image][0] * _nrc_ta_dither_sign[hdul[0].header['DETECTOR']][0]
+            yref -= _nrc_ta_dither_offsets_pix[i_ta_image][1] * _nrc_ta_dither_sign[hdul[0].header['DETECTOR']][1]
+
+        aperture_text = f'Intended target pos: {xref:.2f}, {yref:.2f}'
+
+        # Optional, plot the measured centroids
+        if show_centroids:
+            ### OSS CENTROIDS ###
+            # First, see if we can retrieve the on-board TA centroid measurment from the OSS engineering DB in MAST
+            try:
+                import misc_jwst.engdb
+                # retrieve the log for this visit, extract the OSS centroids, and convert to same
+                # coordinate frame as used here:
+                osslog = misc_jwst.engdb.get_ictm_event_log(hdul[0].header['VSTSTART'], hdul[0].header['VISITEND'])
+                try:
+                    oss_cen = misc_jwst.engdb.extract_oss_TA_centroids(osslog, 'V' + hdul[0].header['VISIT_ID'])
+                    # Convert from full-frame (as used by OSS) to detector subarray coords:
+                    oss_cen_sci = ta_aperture.det_to_sci(*oss_cen)
+                    oss_cen_sci_pythonic = np.asarray(oss_cen_sci) - 1  # convert from 1-based pixel indexing to 0-based
+                    if i_ta_image == n_ta_images -1:
+                        # the OSS centroid is computed onboard relative to the LAST of n TA images, if there's more than 1
+                        # So if we are showing the last image, then it makes sense to mark and annotate the OSS centroid location.
+                        oss_centroid_text = f"OSS centroid: {oss_cen_sci_pythonic[0]:.2f}, {oss_cen_sci_pythonic[1]:.2f}"
+
+                        axes[i_ta_image].scatter(oss_cen_sci_pythonic[0], oss_cen_sci_pythonic[1], color='0.5',
+                                                 marker='x', s=50)
+                        axes[i_ta_image].text(oss_cen_sci_pythonic[0], oss_cen_sci_pythonic[1], 'OSS  ', color='0.9',
+                                              verticalalignment='center', horizontalalignment='right')
+                    else:
+                        oss_centroid_text = ""
+
+                    if verbose:
+                        print(f"OSS centroid on board:  {oss_cen}  (full det coord frame, 1-based)")
+                        print(f"OSS centroid converted: {oss_cen_sci_pythonic}  (sci frame in {ta_aperture.AperName}, 0-based)")
+                        full_ap = siaf[ta_aperture.AperName[0:5] + "_FULL"]
+                        oss_cen_full_sci = np.asarray(full_ap.det_to_sci(*oss_cen)) - 1
+                        print(f"OSS centroid converted: {oss_cen_full_sci}  (sci frame in {full_ap.AperName}, 0-based)")
+
+                except RuntimeError:
+                    if verbose:
+                        print("Could not parse TA coordinates from log. TA may have failed?")
+                    oss_cen_sci_pythonic = None
+                    oss_centroid_text = "No OSS centroid; TA failed"
+
+                ### WCS COORDINATES ###
+                model = jwst.datamodels.open(hdul)
+                targ_coords = astropy.coordinates.SkyCoord(model.meta.target.ra, model.meta.target.dec, frame='icrs', unit=u.deg)
+                targ_coords_pix = model.meta.wcs.world_to_pixel(targ_coords)  # returns x, y
+                if verbose:
+                    print(f"Target coords: {targ_coords}")
+                    print(f"               {targ_coords.to_string('hmsdms', sep=':')}")
+                axes[i_ta_image].scatter(targ_coords_pix[0], targ_coords_pix[1], color='magenta', marker='+', s=50)
+                axes[i_ta_image].text(targ_coords_pix[0], targ_coords_pix[1]+2, 'WCS', color='magenta', verticalalignment='bottom', horizontalalignment='center')
+                wcs_text = f'Expected from WCS: {targ_coords_pix[0]:.2f}, {targ_coords_pix[1]:.2f}'
+
+                if verbose:
+                    print(f"Star coords from WCS: {targ_coords_pix}")
+                    if oss_cen_sci_pythonic is not None:
+                        print(f"WCS offset =  {np.asarray(targ_coords_pix) - oss_cen_sci_pythonic} pix  (WCS - OSS)")
+
+                        # TODO compute delta RA and dec. Use
+            except ImportError:
+                oss_centroid_text = ""
+                wcs_text = ""
+
+            ### WEBBPSF CENTROIDS ###
+
+            # apply a mask around the border pixels, to apply a prior that the PSF is probably in the center-ish
+            # and ignore any unmasked bad/hot pixels near the edges. This makes this alignment step more robust
+            nm = 6
+            border_mask = np.ones_like(im_obs_clean)
+            border_mask[:nm] = 0
+            border_mask[-nm:] = 0
+            border_mask[:, :nm] = 0
+            border_mask[:, -nm:] = 0
+
+            cen = webbpsf.fwcentroid.fwcentroid(im_obs_clean*border_mask)
+            axes[i_ta_image].scatter(cen[1], cen[0], color='red', marker='+', s=50)
+            axes[i_ta_image].text(cen[1], cen[0], '  webbpsf', color='red', verticalalignment='center')
+
+            if i_ta_image == n_ta_images - 1:
+                # For the last image, we have an OSS centroid and can compare to that
+                deltapos = (xref - oss_cen_sci_pythonic[0], yref - oss_cen_sci_pythonic[1])
+                deltapos_type = 'Intended - OSS'
+            else:
+                # if more than 1 image, for the earlier images show the comparison to webbpsf centroids
+                deltapos = (xref - cen[1], yref - cen[0])
+                deltapos_type = 'Intended-webbpsf'
+
+            image_text = f"Pixel coordinates (0-based):         \n{oss_centroid_text}\n webbpsf centroid: {cen[1]:.2f}, {cen[0]:.2f}\n{wcs_text}\n{aperture_text}\n$\\Delta$pos ({deltapos_type}): {deltapos[0]:.2f}, {deltapos[1]:.2f}"
+
+            axes[i_ta_image].text(0.95, 0.04, image_text,
+                         horizontalalignment='right', verticalalignment='bottom',
+                         transform=axes[i_ta_image].transAxes,
+                         color='white')
+
+
+    if n_ta_images == 1:
+        axes[1].set_visible(False)
+        axes[2].set_visible(False)
+    for ax in axes[0:n_ta_images]:
+        cb = fig.colorbar(ax.images[0], ax=ax, orientation='horizontal',
+                    label=hdul['SCI'].header['BUNIT'], fraction=0.05, shrink=0.9, pad=0.07)
+        ticks = cb.ax.get_xticks()
+        cb.ax.set_xticks([t for t in ticks if t>0.1])
+
+    plt.tight_layout()
+
+
+    outname = f'nrc_ta_analysis_{visitid}.pdf'
     plt.savefig(outname)
     print(f" => {outname}")
 
