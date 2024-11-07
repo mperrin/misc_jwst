@@ -20,13 +20,8 @@ from matplotlib.backends.backend_pdf import PdfPages
 import pysiaf
 import jwst.datamodels
 import misc_jwst.utils, misc_jwst.mast
-from misc_jwst.mast import mast_retrieve_files
+from misc_jwst.mast import mast_retrieve_files, set_params
 
-
-
-def set_params(parameters):
-    """Utility function for making dicts used in MAST queries"""
-    return [{"paramName":p, "values":v} for p,v in parameters.items()]
 
 
 @functools.lru_cache

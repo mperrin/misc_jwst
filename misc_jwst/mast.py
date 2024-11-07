@@ -206,6 +206,8 @@ def get_visit_exposure_times(visitid, extra_columns=""):
 def query_program_visit_times(program,  verbose=False):
     """ Get the start and end times of all completed visits in a program.
 
+    See also visit_start_end_times for a specifc named visit..
+
     Parameters
     ----------
     program : int or str
@@ -241,6 +243,53 @@ def query_program_visit_times(program,  verbose=False):
                                      names=('visit_id', 'start_mjd', 'end_mjd', 'instrument'))
     vis_table.sort(keys='start_mjd')
     return vis_table
+
+def visit_start_end_times(visit):
+    """Get start and end times for a specified visit, from MAST metadata.
+
+    See also query_program_visit_times for all visits in a program.
+
+    Parameters
+    ----------
+    visit : str
+       Visit ID. either like 'V01234001001' or '1234:1:1'
+
+    Returns
+    --------
+    tuple of  (start_time, end_time) as astropy.Time objects
+    """
+
+    # Method 1: Try querying science exposures, then get visit start and end metadata
+    # THis handles the typical case for guided science obs, and also internal unguided obs such as flats
+
+    exps = misc_jwst.mast.get_visit_exposure_times(visit)
+    if exps is not None:
+        return exps[0]['vststart_mjd'], exps[0]['visitend_mjd']
+
+    # Method 2: No science instrument data taken, therefore try guider exposures
+    # This handles the case of observations which failed guider ID and took no science image data. 
+
+    visitid = misc_jwst.utils.get_visitid(visit)  # handle either input format, VPPPPPOOOVVV or PPPP:O:V
+    progid = visitid[1:6]
+    obs = visitid[6:9]
+    exp_type = 'FGS_ID-IMAGE'
+
+    # Set up the query
+    keywords = {'program': [progid] ,'observtn': [obs]}
+    params = {
+        'columns': 'filename, vststart_mjd, visitend_mjd',
+        'filters': set_params(keywords)
+    }
+
+    # Run the web service query. This uses the specialized, lower-level webservice for the
+    # guidestar queries: https://mast.stsci.edu/api/v0/_services.html#MastScienceInstrumentKeywordsGuideStar
+    service = 'Mast.Jwst.Filtered.GuideStar'
+    t = Mast.service_request(service, params)
+
+    tstart, tend = astropy.time.Time(t[0]['vststart_mjd'], format='mjd'), astropy.time.Time(t[0]['visitend_mjd'], format='mjd')
+    tstart.format = tend.format = 'iso'
+    return tstart, tend
+
 
 
 def _query_program_visit_times_by_inst(program, instrument, verbose=False):

@@ -11,12 +11,11 @@ import functools
 import astropy.table
 import misc_jwst.utils
 
-@functools.lru_cache
-def get_ictm_event_log(startdate='2022-02-01', enddate=None, mast_api_token=None, verbose=False,
-                       return_as_table=True):
 
-    # parameters
-    mnemonic = 'ICTM_EVENT_MSG'
+@functools.lru_cache
+def get_mnemonic(mnemonic, startdate='2022-02-01', enddate=None, mast_api_token=None, verbose=False,
+                       return_as_table=True, change_only=True):
+    """Retrieve a single mnemonic time series from the JWST Engineering database"""
 
     # constants
     base = 'https://mast.stsci.edu/jwst/api/v0.1/Download/file?uri=mast:jwstedb'
@@ -36,13 +35,20 @@ def get_ictm_event_log(startdate='2022-02-01', enddate=None, mast_api_token=None
         import warnings
         warnings.warn("Must define MAST_API_TOKEN env variable or specify mast_api_token parameter to access proprietary data")
 
+    # Handle dates as astropy.Time, datetime, or strings
+    if isinstance(startdate, astropy.time.Time):
+        start = startdate
+    else:
+        start = datetime.fromisoformat(f'{startdate}+00:00')
 
-    # fetch event messages from MAST engineering database (lags FOS EDB)
-    start = datetime.fromisoformat(f'{startdate}+00:00')
     if enddate is None:
         end = datetime.now(tz=tz_utc)
+    elif isinstance(enddate, astropy.time.Time):
+        end = enddate
     else:
         end = datetime.fromisoformat(f'{enddate}+23:59:59')
+
+    # fetch event messages from MAST engineering database (lags FOS EDB)
 
     startstr = start.strftime(mastfmt)
     endstr = end.strftime(mastfmt)
@@ -56,6 +62,36 @@ def get_ictm_event_log(startdate='2022-02-01', enddate=None, mast_api_token=None
         exit('HTTPError 401 - Check your MAST token and EDB authorization. May need to refresh your token if it expired.')
     response.raise_for_status()
     lines = response.content.decode('utf-8').splitlines()
+
+    if return_as_table:
+        table =  parse_eventlog_to_table(lines, label=mnemonic)
+        if change_only:
+            table = mnemonic_get_changes(table)
+        return table
+    else:
+        return lines
+
+def mnemonic_get_changes(table):
+    """Trim a mnemonic table down to just the distinct rows when the value changes"""
+    prev = None
+    change_indices = []
+    vals = table.columns[-1]
+    for i in range(len(table)):
+        if vals[i] != prev:
+            prev = vals[i]
+            change_indices.append(i)
+    return table[change_indices]
+
+
+@functools.lru_cache
+def get_ictm_event_log(startdate='2022-02-01', enddate=None, mast_api_token=None, verbose=False,
+                       return_as_table=True):
+
+    # parameters
+    mnemonic = 'ICTM_EVENT_MSG'
+
+    lines = get_mnemonic(mnemonic, startdate=startdate, enddate=enddate, mast_api_token=mast_api_token,
+                         verbose=verbose, return_as_table=False)
 
     if return_as_table:
         return parse_eventlog_to_table(lines, label='Message')
