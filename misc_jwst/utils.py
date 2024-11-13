@@ -1,3 +1,5 @@
+import functools
+
 def get_visitid(visitstr):
     """ Common util function to handle several various kinds of visit specification"""
     if visitstr.startswith("V"):
@@ -26,3 +28,10 @@ def colormap_viridis_white_background():
     ], N=256)
     return white_viridis
 
+@functools.lru_cache
+def get_siaf(inst):
+    """ simple wrapper for siaf load, with caching for speed
+    Because it takes like 0.2 seconds per instance to load this.
+    """
+    import pysiaf
+    return pysiaf.Siaf(inst)

@@ -157,12 +157,20 @@ def jwstops_guiding_performance(visitid):
 def jwstops_durations(visitid, lookback=7*u.day):
     visitid = misc_jwst.utils.get_visitid(visitid)  # handle either input format
     print(f"Retrieving OSS visit log for {visitid}...")
-    now = astropy.time.Time.now()
-    start_time = now - lookback
 
-    log = engdb.get_ictm_event_log(startdate=start_time)
+    try:
+        now = astropy.time.Time.now()
+        start_time = now - lookback
 
-    visit_table = engdb.visit_script_durations(log, visitid)
+        log = engdb.get_ictm_event_log(startdate=start_time)
+
+        visit_table = engdb.visit_script_durations(log, visitid)
+    except RuntimeError:
+        # visit wasn't within the last week, so let's figure out when it was
+        from . import mast
+        start_time, end_time = mast.visit_start_end_times(visitid)
+        log = engdb.get_ictm_event_log(startdate=start_time, enddate=end_time)
+        visit_table = engdb.visit_script_durations(log, visitid)
 
 
 def jwstops_deltas(lookback=48*u.hour):

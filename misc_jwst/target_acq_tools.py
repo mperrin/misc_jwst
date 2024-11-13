@@ -13,6 +13,7 @@ import astropy.units as u
 import jwst.datamodels, stdatamodels
 
 from misc_jwst import utils
+import misc_jwst.engdb
 
 
 # Constants and lookup tables:
@@ -32,7 +33,10 @@ _ta_dither_offsets_pix = {'NIRCAM': {0: [0,0],
 # sign convention for DET frame relative to SCI frame
 _ta_dither_sign = {'NRCALONG': [1, -1],
                    'NRCBLONG': [1,1],  # TODO check this. But NRC TSO TA isn't dithered.
+                    'NRCA1': [1,1],    # TODO check this. But not directly relevant since thus far there have been no dithered TAs on NRCA2
+                    'NRCA2': [1,1],    # TODO check this. But not directly relevant since thus far there have been no dithered TAs on NRCA2
                     'NRCA3': [1,1],    # TODO check this. But not directly relevant since WFS TA doesn't use dithers
+                    'NRCA4': [1,1],    # TODO check this. But not directly relevant since WFS TA doesn't use dithers
                     'NIS': [1,1],      # TODO check this.
                    }
 
@@ -119,9 +123,8 @@ def get_visit_ta_image(visitid, verbose=True, kind='cal', inst='NIRCam', index=0
         files_found.append(ta_hdul)
 
     if nfiles==1:
-        if verbose:
-            print("File date:", ta_hdul[0].header['DATE'])
-
+        #if verbose:
+        #    print("File date:", ta_hdul[0].header['DATE'])
         return files_found[0]
     else:
         return files_found
@@ -199,7 +202,7 @@ def show_ta_img(visitid, ax=None, return_handles=False, inst='NIRCam', mark_refe
     if ax is None:
         ax = plt.gca()
     ax.imshow(ta_img - bglevel, norm=norm, cmap=cmap, origin='lower')
-    ax.set_title(f"{inst} TA{title_extra} on {visitid}\n{hdul[0].header['DATE-OBS']}")
+    ax.set_title(f"{inst} TA{title_extra} on {visitid}\n{hdul[0].header['DATE-OBS']} {hdul[0].header['TIME-OBS'][0:8]}")
     ax.set_ylabel("[Pixels]")
     ax.text(0.05, 0.95, annotation_text,
             color='white', transform=ax.transAxes, verticalalignment='top')
@@ -209,8 +212,8 @@ def show_ta_img(visitid, ax=None, return_handles=False, inst='NIRCam', mark_refe
 
     if mark_reference_point:
         xref, yref = get_ta_reference_point(inst, hdul, ta_expnum)
-        ax.axvline(xref, color='gray', alpha=0.5)
-        ax.axhline(yref, color='gray', alpha=0.5)
+        ax.axvline(xref, color='0.75', alpha=0.5, ls='--')
+        ax.axhline(yref, color='0.75', alpha=0.5, ls='--')
 
     if mark_apername:
         # mark aperture, and which guider was used
@@ -228,7 +231,7 @@ def get_ta_reference_point(inst, hdul, ta_expnum=1):
     This is usually the aperture reference location, but may be modified by any TA dithers, or
     by subarray/full array coord system shenanigans for MIR.
     """
-    siaf = pysiaf.Siaf(inst)
+    siaf = utils.get_siaf(inst)
     ap = siaf.apertures[hdul[0].header['APERNAME']]
 
     if inst.upper() in ['NIRCAM', 'NIRISS']:
@@ -241,7 +244,6 @@ def get_ta_reference_point(inst, hdul, ta_expnum=1):
             xref -= _ta_dither_offsets_pix[inst][ta_expnum-1][0] * _ta_dither_sign[hdul[0].header['DETECTOR']][0]
             yref -= _ta_dither_offsets_pix[inst][ta_expnum-1][1] * _ta_dither_sign[hdul[0].header['DETECTOR']][1]
     elif inst.upper() == 'MIRI':
-        print(hdul[0].header['SUBARRAY'], hdul[0].header['APERNAME'])
         try:
             if hdul[0].header['SUBARRAY'] == 'FULL' and hdul[0].header['APERNAME'] != 'MIRIM_SLIT':
                 # For MIRI, sometimes we have subarray apertures for TA but the images are actually full array.
@@ -345,7 +347,6 @@ def nrc_ta_comparison(visitid, inst='NIRCam', verbose=True, show_centroids=True,
         ### OSS CENTROIDS ###
         # First, see if we can retrieve the on-board TA centroid measurment from the OSS engineering DB in MAST
         try:
-            import misc_jwst.engdb
             # retrieve the log for this visit, extract the OSS centroids, and convert to same
             # coordinate frame as used here:
             osslog = misc_jwst.engdb.get_ictm_event_log(hdul[0].header['VSTSTART'], hdul[0].header['VISITEND'])
@@ -434,7 +435,7 @@ def nrc_ta_comparison(visitid, inst='NIRCam', verbose=True, show_centroids=True,
     print(f" => {outname}")
 
 
-def nrc_ta_analysis(visitid, inst='NIRCam', verbose=True, show_centroids=True, return_wcs_offsets=False, **kwargs):
+def nrc_ta_analysis(visitid, inst='NIRCam', verbose=True,  plot=True, return_wcs_offsets=False, return_pointing_offsets=False, **kwargs):
     """ Retrieve a NIRCam or NIRISS target acq image, and analyze TA performance.
 
     See also nrc_ta_comparison
@@ -444,6 +445,12 @@ def nrc_ta_analysis(visitid, inst='NIRCam', verbose=True, show_centroids=True, r
     visitid : string
         Visit ID. Should be one of the WFSC visits, starting with a NIRCam target acq, or at least
         some other sort of visit that begins with a NIRCam target acquisition.
+    return_wcs_offsets : bool
+        return WCS offets, i.e. the offset between where OSS measured the target and where WCS says the target should be
+        Incompatible with return_pointing_offsets
+    return_pointing_offsets: bool
+        return pointing offsets, i.e. the offset between where OSS measured the target and where it was intended to be
+        Incompatible with return_wcs_offsets
 
     By default it downloads the file from MAST, or looks in the local directory to see if already downloaded.
     Set localpath=[some path] to search for the file in some other directory or filename.
@@ -451,24 +458,30 @@ def nrc_ta_analysis(visitid, inst='NIRCam', verbose=True, show_centroids=True, r
     visitid = utils.get_visitid(visitid)
 
     inst = inst.upper()
-    ta_images =    get_visit_ta_image(visitid, inst=inst, **kwargs)
+    siaf = utils.get_siaf(inst)
+    ta_images = get_visit_ta_image(visitid, inst=inst, **kwargs)
     if ta_images is None:
         raise RuntimeError(f"No TA image found for visit {visitid}")
     elif isinstance(ta_images, astropy.io.fits.HDUList):
         n_ta_images = 1
     elif isinstance(ta_images[0], astropy.io.fits.HDUList):
         n_ta_images = len(ta_images)
-    print(f"Found {n_ta_images} TA images for {visitid} ")
+    if verbose:
+        print(f"Found {n_ta_images} TA images for {visitid} ")
 
-    fig, axes = plt.subplots(figsize=(12,5.5), ncols=2 if inst.upper() == 'MIRI' else 3)
+    if plot:
+        fig, axes = plt.subplots(figsize=(12,5.5), ncols=2 if inst.upper() == 'MIRI' else 3)
 
     # Get and plot the observed TA image
     for i_ta_image in range(n_ta_images):
 
-        hdul, ax, norm, cmap, bglevel = show_ta_img(visitid, ax=axes[i_ta_image], return_handles=True, inst=inst,
-                                                    ta_expnum = i_ta_image +1, **kwargs)
-        print("APERNAME", hdul[0].header['APERNAME'])
-        siaf = pysiaf.Siaf(hdul[0].header['INSTRUME'])
+        if plot:
+            hdul, ax, norm, cmap, bglevel = show_ta_img(visitid, ax=axes[i_ta_image], return_handles=True, inst=inst,
+                                                        ta_expnum = i_ta_image +1, **kwargs)
+        else:
+            hdul = get_visit_ta_image(visitid, inst=inst)
+            if isinstance(hdul, list) and not isinstance(hdul, fits.HDUList):
+                          hdul = hdul[i_ta_image]
         ta_aperture = siaf.apertures[hdul[0].header['APERNAME']]
         xref, yref = get_ta_reference_point(inst, hdul, i_ta_image+1)
 
@@ -498,168 +511,180 @@ def nrc_ta_analysis(visitid, inst='NIRCam', verbose=True, show_centroids=True, r
 
         aperture_text = f'Intended target pos: {xref:.2f}, {yref:.2f}'
 
-        # Optional, plot the measured centroids
-        if show_centroids:
-            ### OSS CENTROIDS ###
-            # First, see if we can retrieve the on-board TA centroid measurment from the OSS engineering DB in MAST
+        ### OSS CENTROIDS ###
+        # First, see if we can retrieve the on-board TA centroid measurment from the OSS engineering DB in MAST
+        try:
+            # retrieve the log for this visit, extract the OSS centroids, and convert to same
+            # coordinate frame as used here:
+            osslog = misc_jwst.engdb.get_ictm_event_log(hdul[0].header['VSTSTART'], hdul[0].header['VISITEND'])
             try:
-                import misc_jwst.engdb
-                # retrieve the log for this visit, extract the OSS centroids, and convert to same
-                # coordinate frame as used here:
-                osslog = misc_jwst.engdb.get_ictm_event_log(hdul[0].header['VSTSTART'], hdul[0].header['VISITEND'])
-                try:
-                    oss_cen = misc_jwst.engdb.extract_oss_TA_centroids(osslog, 'V' + hdul[0].header['VISIT_ID'])
+                oss_cen = misc_jwst.engdb.extract_oss_TA_centroids(osslog, 'V' + hdul[0].header['VISIT_ID'])
 
-                    if inst.upper() == "NIRISS":
+                if inst.upper() == "NIRISS":
+                    if verbose:
                         print("transposing X & Y")
-                        oss_cen = oss_cen[::-1]
+                    oss_cen = oss_cen[::-1]
 
-                    # Convert from full-frame (as used by OSS) to detector subarray coords:
-                    oss_cen_sci = ta_aperture.det_to_sci(*oss_cen)
-                    # For MIRI only, deal with the fact that the image data can be full array even if the aperture is subarray
-                    if inst.upper() == 'MIRI':
-                        if hdul[0].header['SUBARRAY'] == 'FULL' :
-                            oss_cen_sci = np.asarray(full_ap.det_to_sci(*oss_cen))
-                        elif hdul[0].header['SUBARRAY'] == 'SLITLESSPRISM':
-                            # Special case, pointed using TASLITLESSPRISM but read out using SLITLESSPRISM
-                            slitlessprism_ap = siaf['MIRIM_SLITLESSPRISM']
-                            oss_cen_sci = np.asarray(slitlessprism_ap.det_to_sci(*oss_cen))
-                        elif hdul[0].header['SUBARRAY'].startswith('MASK'):
-                            coron_ap = siaf['MIRIM_'+ hdul[0].header['SUBARRAY']]
-                            oss_cen_sci = np.asarray(coron_ap.det_to_sci(*oss_cen))
+                # Convert from full-frame (as used by OSS) to detector subarray coords:
+                oss_cen_sci = ta_aperture.det_to_sci(*oss_cen)
+                # For MIRI only, deal with the fact that the image data can be full array even if the aperture is subarray
+                if inst.upper() == 'MIRI':
+                    if hdul[0].header['SUBARRAY'] == 'FULL' :
+                        oss_cen_sci = np.asarray(full_ap.det_to_sci(*oss_cen))
+                    elif hdul[0].header['SUBARRAY'] == 'SLITLESSPRISM':
+                        # Special case, pointed using TASLITLESSPRISM but read out using SLITLESSPRISM
+                        slitlessprism_ap = siaf['MIRIM_SLITLESSPRISM']
+                        oss_cen_sci = np.asarray(slitlessprism_ap.det_to_sci(*oss_cen))
+                    elif hdul[0].header['SUBARRAY'].startswith('MASK'):
+                        coron_ap = siaf['MIRIM_'+ hdul[0].header['SUBARRAY']]
+                        oss_cen_sci = np.asarray(coron_ap.det_to_sci(*oss_cen))
 
 
-                    oss_cen_sci_pythonic = np.asarray(oss_cen_sci) - 1  # convert from 1-based pixel indexing to 0-based
-                    if i_ta_image == show_oss_for_image:
-                        # the OSS centroid is computed onboard relative to the LAST of n TA images, if there's more than 1
-                        # So if we are showing the last image, then it makes sense to mark and annotate the OSS centroid location.
-                        oss_centroid_text = f"OSS centroid: {oss_cen_sci_pythonic[0]:.2f}, {oss_cen_sci_pythonic[1]:.2f}"
+                oss_cen_sci_pythonic = np.asarray(oss_cen_sci) - 1  # convert from 1-based pixel indexing to 0-based
+                oss_cen_full_sci = np.asarray(full_ap.det_to_sci(*oss_cen)) - 1
 
+                if i_ta_image == show_oss_for_image:
+                    # the OSS centroid is computed onboard relative to the LAST of n TA images, if there's more than 1
+                    # So if we are showing the last image, then it makes sense to mark and annotate the OSS centroid location.
+                    oss_centroid_text = f"OSS centroid: {oss_cen_sci_pythonic[0]:.2f}, {oss_cen_sci_pythonic[1]:.2f}"
+
+                    if plot:
                         axes[i_ta_image].scatter(oss_cen_sci_pythonic[0], oss_cen_sci_pythonic[1], color='0.5',
                                                  marker='x', s=50)
                         axes[i_ta_image].text(oss_cen_sci_pythonic[0], oss_cen_sci_pythonic[1], 'OSS  ', color='0.9',
                                               verticalalignment='center', horizontalalignment='right')
-                    else:
-                        oss_centroid_text = ""
+                else:
+                    oss_centroid_text = ""
 
-                    if verbose:
-                        print(f"OSS centroid on board:  {oss_cen}  (full det coord frame, 1-based)")
-                        print(f"OSS centroid converted: {oss_cen_sci_pythonic}  (sci frame in {ta_aperture.AperName}, 0-based)")
-                        oss_cen_full_sci = np.asarray(full_ap.det_to_sci(*oss_cen)) - 1
-                        print(f"OSS centroid converted: {oss_cen_full_sci}  (sci frame in {full_ap.AperName}, 0-based)")
-
-                except RuntimeError:
-                    if verbose:
-                        print("Could not parse TA coordinates from log. TA may have failed?")
-                    oss_cen_sci_pythonic = None
-                    oss_centroid_text = "No OSS centroid; TA failed"
-
-                ### WCS COORDINATES ###
-                model = jwst.datamodels.open(hdul)
-                targ_coords = astropy.coordinates.SkyCoord(model.meta.target.ra, model.meta.target.dec, frame='icrs', unit=u.deg)
-                targ_coords_pix = model.meta.wcs.world_to_pixel(targ_coords)  # returns x, y
                 if verbose:
-                    print(f"Target coords: {targ_coords}")
-                    print(f"               {targ_coords.to_string('hmsdms', sep=':')}")
+                    print(f"OSS centroid on board:  {oss_cen}  (full det coord frame, 1-based)")
+                    print(f"OSS centroid converted: {oss_cen_sci_pythonic}  (sci frame in {ta_aperture.AperName}, 0-based)")
+                    print(f"OSS centroid converted: {oss_cen_full_sci}  (sci frame in {full_ap.AperName}, 0-based)")
+
+            except RuntimeError:
+                if verbose:
+                    print("Could not parse TA coordinates from log. TA may have failed?")
+                oss_cen_sci_pythonic = (np.nan, np.nan)
+                oss_centroid_text = "No OSS centroid; TA failed"
+
+            ### WCS COORDINATES ###
+            model = jwst.datamodels.open(hdul)
+            targ_coords = astropy.coordinates.SkyCoord(model.meta.target.ra, model.meta.target.dec, frame='icrs', unit=u.deg)
+            targ_coords_pix = model.meta.wcs.world_to_pixel(targ_coords)  # returns x, y
+            wcs_text = f'Expected from WCS: {targ_coords_pix[0]:.2f}, {targ_coords_pix[1]:.2f}'
+            if verbose:
+                print(f"Target coords: {targ_coords}")
+                print(f"               {targ_coords.to_string('hmsdms', sep=':')}")
+            if plot:
                 axes[i_ta_image].scatter(targ_coords_pix[0], targ_coords_pix[1], color='magenta', marker='+', s=50)
                 axes[i_ta_image].text(targ_coords_pix[0], targ_coords_pix[1]+2, 'WCS', color='magenta', verticalalignment='bottom', horizontalalignment='center')
-                wcs_text = f'Expected from WCS: {targ_coords_pix[0]:.2f}, {targ_coords_pix[1]:.2f}'
 
 
 
-            except ImportError:
-                oss_centroid_text = ""
-                wcs_text = ""
+        except ImportError:
+            oss_centroid_text = ""
+            wcs_text = ""
 
-            ### WEBBPSF CENTROIDS ###
+        ### WEBBPSF CENTROIDS ###
 
-            # apply a mask around the border pixels, to apply a prior that the PSF is probably in the center-ish
-            # and ignore any unmasked bad/hot pixels near the edges. This makes this alignment step more robust
-            nm = 6
-            border_mask = np.ones_like(im_obs_clean)
-            border_mask[:nm] = 0
-            border_mask[-nm:] = 0
-            border_mask[:, :nm] = 0
-            border_mask[:, -nm:] = 0
+        # apply a mask around the border pixels, to apply a prior that the PSF is probably in the center-ish
+        # and ignore any unmasked bad/hot pixels near the edges. This makes this alignment step more robust
+        nm = 6
+        border_mask = np.ones_like(im_obs_clean)
+        border_mask[:nm] = 0
+        border_mask[-nm:] = 0
+        border_mask[:, :nm] = 0
+        border_mask[:, -nm:] = 0
 
-            if hdul[0].header['APERNAME']=='MIRIM_TALRS':
-                # Special case, it's a full frame image but enforce just centroiding in the TA region of interest
-                border_mask[:] = 0
-                border_mask[260:320, 390:440] = 1
-            elif hdul[0].header['APERNAME']=='MIRIM_SLIT':
-                border_mask[:] = 0
-                border_mask[270:330, 290:350] = 1
-            elif hdul[0].header['APERNAME'].endswith('_UR'):
-                # coronagraphy upper right quadrant TA
-                imin, imax = (200, 250) if 'LYOT' in hdul[0].header['APERNAME'] else (150, 200)
-                border_mask[:] = 0
-                border_mask[imin:imax, imin:imax] = 1
-            elif hdul[0].header['APERNAME'].endswith('_CUR'):
-                # coronagraphy center upper right quadrant TA
-                imin, imax = (150, 225) if 'LYOT' in hdul[0].header['APERNAME'] else (100, 150)
-                border_mask[:] = 0
-                border_mask[imin:imax, imin:imax] = 1
+        if hdul[0].header['APERNAME']=='MIRIM_TALRS':
+            # Special case, it's a full frame image but enforce just centroiding in the TA region of interest
+            border_mask[:] = 0
+            border_mask[260:320, 390:440] = 1
+        elif hdul[0].header['APERNAME']=='MIRIM_SLIT':
+            border_mask[:] = 0
+            border_mask[270:330, 290:350] = 1
+        elif hdul[0].header['APERNAME'].endswith('_UR'):
+            # coronagraphy upper right quadrant TA
+            imin, imax = (200, 250) if 'LYOT' in hdul[0].header['APERNAME'] else (150, 200)
+            border_mask[:] = 0
+            border_mask[imin:imax, imin:imax] = 1
+        elif hdul[0].header['APERNAME'].endswith('_CUR'):
+            # coronagraphy center upper right quadrant TA
+            imin, imax = (150, 225) if 'LYOT' in hdul[0].header['APERNAME'] else (100, 150)
+            border_mask[:] = 0
+            border_mask[imin:imax, imin:imax] = 1
 
-            cen = webbpsf.fwcentroid.fwcentroid(im_obs_clean*border_mask)
+        cen = webbpsf.fwcentroid.fwcentroid(im_obs_clean*border_mask)
+        if plot:
             axes[i_ta_image].scatter(cen[1], cen[0], color='red', marker='+', s=50)
             axes[i_ta_image].text(cen[1], cen[0], '  webbpsf', color='red', verticalalignment='center')
 
-            if i_ta_image == show_oss_for_image:
-                # For this image, we have an OSS centroid and can compare to that
-                deltapos = (xref - oss_cen_sci_pythonic[0], yref - oss_cen_sci_pythonic[1])
-                deltapos_type = 'Intended - OSS'
-            else:
-                # if more than 1 image, for the earlier images, or subsequent TACONFIRMs, show the comparison to webbpsf centroids
-                deltapos = (xref - cen[1], yref - cen[0])
-                deltapos_type = 'Intended-webbpsf'
+        if i_ta_image == show_oss_for_image:
+            # For this image, we have an OSS centroid and can compare to that
+            deltapos = (oss_cen_sci_pythonic[0] - xref,  oss_cen_sci_pythonic[1] - yref)
+            deltapos_type = 'OSS - Intended'
+        else:
+            # if more than 1 image, for the earlier images, or subsequent TACONFIRMs, show the comparison to webbpsf centroids
+            deltapos = (cen[1] - xref,  cen[0] - yref)
+            deltapos_type = 'fwcentroid-Intended'
 
             image_text = f"Pixel coordinates (0-based):         \n{oss_centroid_text}\n webbpsf measure_centroid: {cen[1]:.2f}, {cen[0]:.2f}\n{wcs_text}\n{aperture_text}\n$\\Delta$pos ({deltapos_type}): {deltapos[0]:.2f}, {deltapos[1]:.2f}"
 
-            axes[i_ta_image].text(0.95, 0.04, image_text,
-                         horizontalalignment='right', verticalalignment='bottom',
-                         transform=axes[i_ta_image].transAxes,
-                         color='white')
+            if plot:
+                axes[i_ta_image].text(0.95, 0.04, image_text,
+                             horizontalalignment='right', verticalalignment='bottom',
+                             transform=axes[i_ta_image].transAxes,
+                             color='white')
 
-        print(f"Star coords from WCS: {targ_coords_pix}")
+        if verbose:
+            print(f"Star coords from WCS: {targ_coords_pix}")
         if oss_cen_sci_pythonic is not None and (i_ta_image == show_oss_for_image):
             wcs_offset_pix = np.asarray(targ_coords_pix) - oss_cen_sci_pythonic
-            print(f"WCS offset =  {wcs_offset_pix} pix  (WCS - OSS)")
 
-            # TODO compute delta RA and dec. Use
+            # compute delta RA and dec. 
             # from above we already have targ_coords as the RA and dec of the target star, at the time of the exposure
             ta_cen_coords = model.meta.wcs.pixel_to_world(*oss_cen_sci_pythonic)
-            print('TARG_COORDS: ', targ_coords)
-            print('TA_CEN_COORDS: ', ta_cen_coords)
-
             dra, ddec = ta_cen_coords.spherical_offsets_to(targ_coords)
             wcs_offset_radec = (dra.to(u.arcsec), ddec.to(u.arcsec))
-            print("DRA, DDEC: ", dra, ddec)
 
-            axes[show_oss_for_image].text(0.95, 0.75,
-                                  f'WCS $\\Delta$RA, $\\Delta$Dec =\n {dra.to_value(u.arcsec):.3f}, {ddec.to_value(u.arcsec):.3f} arcsec',
-                                  horizontalalignment='right', verticalalignment='bottom',
-                                  transform=axes[show_oss_for_image].transAxes,
-                                  color='cyan')
+            if verbose:
+                print(f"WCS offset =  {wcs_offset_pix} pix  (WCS - OSS)")
+                print('TARG_COORDS: ', targ_coords)
+                print('TA_CEN_COORDS: ', ta_cen_coords)
+                print("DRA, DDEC: ", dra, ddec)
 
-    if n_ta_images == 1:
-        axes[1].set_visible(False)
-        if inst.upper() != 'MIRI':
-            axes[2].set_visible(False)
-    for ax in axes[0:n_ta_images]:
-        cb = fig.colorbar(ax.images[0], ax=ax, orientation='horizontal',
-                    label=hdul['SCI'].header['BUNIT'], fraction=0.05, shrink=0.9, pad=0.07)
-        ticks = cb.ax.get_xticks()
-        cb.ax.set_xticks([t for t in ticks if t>0.1])
+            if plot:
+                axes[show_oss_for_image].text(0.95, 0.75,
+                                      f'WCS $\\Delta$RA, $\\Delta$Dec =\n {dra.to_value(u.arcsec):.3f}, {ddec.to_value(u.arcsec):.3f} arcsec',
+                                      horizontalalignment='right', verticalalignment='bottom',
+                                      transform=axes[show_oss_for_image].transAxes,
+                                      color='cyan')
 
-    plt.tight_layout()
+    if plot:
+        if n_ta_images == 1:
+            axes[1].set_visible(False)
+            if inst.upper() != 'MIRI':
+                axes[2].set_visible(False)
+        for ax in axes[0:n_ta_images]:
+            cb = fig.colorbar(ax.images[0], ax=ax, orientation='horizontal',
+                        label=hdul['SCI'].header['BUNIT'], fraction=0.05, shrink=0.9, pad=0.07)
+            ticks = cb.ax.get_xticks()
+            cb.ax.set_xticks([t for t in ticks if t>0.1])
+
+        plt.tight_layout()
 
 
-    outname = f'{inst.lower()}_ta_analysis_{visitid}.pdf'
-    plt.savefig(outname)
-    print(f" => {outname}")
+        outname = f'{inst.lower()}_ta_analysis_{visitid}.pdf'
+        plt.savefig(outname)
+        print(f" => {outname}")
 
+    if return_wcs_offsets and return_pointing_offsets:
+        raise RuntimeError("You can't set both return_wcs_offsets and return_pointing_offsets at the same time.")
     if return_wcs_offsets:
         return wcs_offset_pix, wcs_offset_radec
+    elif return_pointing_offsets:
+        # Return pointing offset, and which aperture name that was relative to
+        return deltapos, hdul[0].header['APERNAME']
 
 
 def nrc_ta_get_wcs_offset(visitid, inst='NIRCam', verbose=True, **kwargs):
@@ -715,7 +740,7 @@ def nrc_ta_get_wcs_offset(visitid, inst='NIRCam', verbose=True, **kwargs):
         im_obs_clean[im_obs_dq & 1] = np.nan  # Mask out any DO_NOT_USE pixels.
         im_obs_clean = astropy.convolution.interpolate_replace_nans(im_obs, kernel=np.ones((5,5)))
 
-        siaf = pysiaf.Siaf(hdul[0].header['INSTRUME'])
+        siaf = utils.get_siaf(hdul[0].header['INSTRUME'])
         ta_aperture = siaf.apertures[hdul[0].header['APERNAME']]
         xref = ta_aperture.XSciRef - 1   # siaf uses 1-based counting
         yref = ta_aperture.YSciRef - 1   # ditto
@@ -732,7 +757,6 @@ def nrc_ta_get_wcs_offset(visitid, inst='NIRCam', verbose=True, **kwargs):
             ### OSS CENTROIDS ###
             # First, see if we can retrieve the on-board TA centroid measurment from the OSS engineering DB in MAST
             try:
-                import misc_jwst.engdb
                 # retrieve the log for this visit, extract the OSS centroids, and convert to same
                 # coordinate frame as used here:
                 osslog = misc_jwst.engdb.get_ictm_event_log(hdul[0].header['VSTSTART'], hdul[0].header['VISITEND'])
@@ -800,12 +824,12 @@ def nrc_ta_get_wcs_offset(visitid, inst='NIRCam', verbose=True, **kwargs):
 
             if i_ta_image == show_oss_for_image:
                 # For this image, we have an OSS centroid and can compare to that
-                deltapos = (xref - oss_cen_sci_pythonic[0], yref - oss_cen_sci_pythonic[1])
-                deltapos_type = 'Intended - OSS'
+                deltapos = (oss_cen_sci_pythonic[0] - xref,  oss_cen_sci_pythonic[1] - yref)
+                deltapos_type = 'OSS - Intended'
             else:
                 # if more than 1 image, for the earlier images, or subsequent TACONFIRMs, show the comparison to webbpsf centroids
-                deltapos = (xref - cen[1], yref - cen[0])
-                deltapos_type = 'Intended-webbpsf'
+                deltapos = (cen[1] - xref,  cen[0] - yref)
+                deltapos_type = 'fwcentroid-Intended'
 
             image_text = f"Pixel coordinates (0-based):         \n{oss_centroid_text}\npoppy fwcentroid: {cen[1]:.2f}, {cen[0]:.2f}\n{wcs_text}\n{aperture_text}\n$\\Delta$pos ({deltapos_type}): {deltapos[0]:.2f}, {deltapos[1]:.2f}"
 
@@ -854,17 +878,17 @@ def nrc_ta_get_wcs_offset(visitid, inst='NIRCam', verbose=True, **kwargs):
 ########## NIRISS AND MIRI ##########
 # (these just piggy-backs on the NIRCam code above)
 
-def nis_ta_analysis(visitid,  verbose=True, show_centroids=True, **kwargs):
+def nis_ta_analysis(visitid,  verbose=True, **kwargs):
     """ Retrieve a NIRISS target acq image, and analyze TA performance.
     See nrc_ta_analysis for further docs """
 
-    return nrc_ta_analysis(visitid, inst='NIRISS', verbose=verbose, show_centroids=show_centroids, **kwargs)
+    return nrc_ta_analysis(visitid, inst='NIRISS', verbose=verbose, **kwargs)
 
-def miri_ta_analysis(visitid,  verbose=True, show_centroids=True, **kwargs):
+def miri_ta_analysis(visitid,  verbose=True, **kwargs):
     """ Retrieve a MIRI target acq image, and analyze TA performance.
     See nrc_ta_analysis for further docs """
 
-    return nrc_ta_analysis(visitid, inst='MIRI', verbose=verbose, show_centroids=show_centroids, **kwargs)
+    return nrc_ta_analysis(visitid, inst='MIRI', verbose=verbose, **kwargs)
 
 
 
@@ -1019,17 +1043,17 @@ def nrs_ta_position_fit(model, cutout_center_coords, box_size = 40, plot=False,
 def nrs_ta_centroids_and_offsets(model, box_size = 16, plot=True, saveplot=True, vmax=1e5, outname_extra="", verbose=True):
     target_coords = astropy.coordinates.SkyCoord(model.meta.target.ra, model.meta.target.dec, frame='icrs', unit=u.deg)
     # target coordinates at epoch, as computed from APT
-    print("Target RA, Dec at epoch:")
-    print(target_coords)
     target_coords_pix = list(model.meta.wcs.world_to_pixel(target_coords))
-    print(target_coords_pix)
+    if verbose:
+        print("Target RA, Dec at epoch:")
+        print(target_coords)
+        print(target_coords_pix)
 
     result, covariance = nrs_ta_position_fit(model, target_coords_pix, box_size=box_size,
                                                 use_dq=False)
 
 
     # Retrieve the OSS onboard centroids for comparison
-    import misc_jwst.engdb
     osslog = misc_jwst.engdb.get_ictm_event_log(startdate=model.meta.visit.start_time,
                                     enddate=model.meta.guidestar.visit_end_time)
 
@@ -1039,21 +1063,19 @@ def nrs_ta_centroids_and_offsets(model, box_size = 16, plot=True, saveplot=True,
                          oss_centroid[0] - model.meta.subarray.ystart]
 
     #ta_conf_model.find_fits_keyword('SUBSTRT1'), ta_conf_model.find_fits_keyword('SUBSTRT2')
+    # offset WCS - oSS
+    wcs_offset = [target_coords_pix[i] - (oss_centroid[i] - 1) for i in range(2)]
+    wcs_offset = np.asarray(target_coords_pix) - np.asarray(oss_centroid_conv)
+
+    # offset WCS - Gaussian
+    wcs_offset_g = [target_coords_pix[0] - result.x_mean, target_coords_pix[1] - result.y_mean, ]
     if verbose:
         print(f"Onboard OSS TA centroid (1-based): {oss_centroid}")
         print(f"Onboard OSS TA centroid (subarray index): {oss_centroid_conv}")
 
         print(f"    Agrees with Gaussian fit within: {oss_centroid[0]-1-result.x_mean:.4f}\t {oss_centroid[1]-1-result.y_mean:.4f} pix")
 
-    # offset WCS - oSS
-    wcs_offset = [target_coords_pix[i] - (oss_centroid[i] - 1) for i in range(2)]
-    wcs_offset = np.asarray(target_coords_pix) - np.asarray(oss_centroid_conv)
-    if verbose:
         print(f"WCS offset relative to OSS: {wcs_offset}")
-
-    # offset WCS - Gaussian
-    wcs_offset_g = [target_coords_pix[0] - result.x_mean, target_coords_pix[1] - result.y_mean, ]
-    if verbose:
         print(f"WCS offset relative to Gaussian fit: {wcs_offset_g}")
 
 
@@ -1214,12 +1236,12 @@ def nirspec_wata_ta_analysis(visitid, verbose=True, show_centroids=True):
 
         target_coords = astropy.coordinates.SkyCoord(model.meta.target.ra, model.meta.target.dec, frame='icrs', unit=u.deg)
         # target coordinates at epoch, as computed from APT
-        print("Target RA, Dec at epoch:", target_coords)
         target_coords_pix = list(model.meta.wcs.world_to_pixel(target_coords))
-        print(target_coords_pix)
+        if verbose:
+            print("Target RA, Dec at epoch:", target_coords)
+            print(target_coords_pix)
 
         # Retrieve the OSS onboard centroids for comparison
-        import misc_jwst.engdb
         osslog = misc_jwst.engdb.get_ictm_event_log(startdate=model.meta.visit.start_time,
                                         enddate=model.meta.guidestar.visit_end_time)
 
@@ -1238,15 +1260,6 @@ def nirspec_wata_ta_analysis(visitid, verbose=True, show_centroids=True):
         wcs_offset = np.asarray(target_coords_pix) - np.asarray(oss_centroid_conv)
         if verbose:
             print(f"WCS offset relative to OSS: {wcs_offset}")
-
-
-        # re-create some values we will need for the plot
-        # this partially duplicates code from simple_position_fit for modularity
-        #cutout = astropy.nddata.Cutout2D(model.data, target_coords_pix, box_size)
-        #med_bg = np.nanmedian(cutout.data)
-        #y, x = np.indices(cutout.data.shape)
-        #x += cutout.xmin_original
-        #y += cutout.ymin_original
 
 
         # Now do some plots

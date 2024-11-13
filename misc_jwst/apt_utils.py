@@ -207,23 +207,25 @@ def export_timing_json(prog_id, redo=False):
 
     if not os.path.exists(f'{prog_id}.timing.json') or redo:
         print(f"Exporting timing summary for {prog_id}")
+        import subprocess
         subprocess.run([aptpath, '--nogui', '-export', 'timing.json', f'{prog_id}.aptx'])
 
 def timing_summary_from_json(progid):
     # Read info from the APT exported .timing.json files and display summary
     fn = f'{progid}.timing.json'
+    import json
 
     print(f"Timing summary for APT {progid}")
     with open(fn) as file:
         timedata = json.load(file)
-    print(f"Total charged in APT for program {prog_id}: {timedata['charged_time']} hours")
+    print(f"Total charged in APT for program {progid}: {timedata['charged_time']} hours")
 
     tot_charged = 0
 
     for i, obs in enumerate(timedata['observations']):
         print(f'Obs {obs["id"]:2}: Charged {obs["charged_duration_seconds"]:4} s\t({obs["template"]}, {obs["number_of_visits"]} visit)')
         tot_charged += obs["charged_duration_seconds"]
-    print(f"\tSum of observations in APT for program {prog_id}: {tot_charged} s = \t{tot_charged/3600:.02f} hours\n")
+    print(f"\tSum of observations in APT for program {progid}: {tot_charged} s = \t{tot_charged/3600:.02f} hours\n")
 
 def get_obs_description(res, desired_obsid):
     # helper function for the awkward task of getting observation description from the parsed XML

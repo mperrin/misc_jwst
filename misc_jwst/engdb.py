@@ -414,6 +414,8 @@ def visit_script_durations(event_table, selected_visit_id, verbose=True, return_
 
     cumulative_time = 0
 
+    sci_plus_overheads = 'Science + inst. overheads'
+
     for key in starts:
         deltatime = stops[key]-starts[key]
         vprint(f"  {key:50s}{deltatime*86400:6.1f} s")
@@ -428,7 +430,9 @@ def visit_script_durations(event_table, selected_visit_id, verbose=True, return_
         elif 'TA' in script:
             category='TA'
         elif script[0:3] in ['NRC','NIS','NRS','MIR']:
-            category = 'Parallel' if ('P' in activity_id and not activity_id.split('P')[1].startswith('00000')) else 'Science obs'
+            category = 'Parallel' if ('P' in activity_id and not activity_id.split('P')[1].startswith('00000')) else sci_plus_overheads
+        elif 'WAIT' in script:
+            category = 'Wait'
         else:
             category='Other'
 
@@ -441,9 +445,9 @@ def visit_script_durations(event_table, selected_visit_id, verbose=True, return_
 
     vprint("\nSummary by category:")
     label='Visit total'
-    vprint(f"\t{label:15s}\t{total_visit_duration*86400:6.1f} s")
+    vprint(f"\t{label:25s}\t{total_visit_duration*86400:6.1f} s")
 
-    categories = ['Slew', 'FGS', 'TA', 'Science obs', 'Other']
+    categories = ['Slew', 'FGS', 'Wait', 'TA', sci_plus_overheads, 'Other']
     if 'Parallel' in summary_durations:
         categories.insert(4, 'Parallel')
 
@@ -454,7 +458,7 @@ def visit_script_durations(event_table, selected_visit_id, verbose=True, return_
             parts.append(0)
             continue
         parts.append(summary_durations[category]*86400)
-        vprint(f"\t{label:15s}\t{summary_durations[category]*86400:6.1f} s")
+        vprint(f"\t{label:30s}\t{summary_durations[category]*86400:7.1f} s")
     vprint("\n")
 
     if return_table:
