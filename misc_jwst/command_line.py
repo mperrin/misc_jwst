@@ -8,6 +8,7 @@ from bs4 import BeautifulSoup
 import argparse
 
 import misc_jwst.utils
+from misc_jwst.visit_status import dsn_schedule
 
 _short_modes = {'MIRI Medium Resolution Spectroscopy': 'MIRI MRS',
                'MIRI Low Resolution Spectroscopy': 'MIRI LRS',
@@ -278,6 +279,7 @@ def jwstops_main():
     parser.add_argument('-o', '--overview',  action='store_true', help='Ops overview; combines some of latest, schedule, and deltas')
     parser.add_argument('-v', '--visitlog',  help='retrieve OSS visit log for this visit (within previous week).')
     parser.add_argument('-p', '--program_status',  help='Print status of program visit execution')
+    parser.add_argument('--dsn', action='store_true',  help='Print DSN communications pass schedule.')
     parser.add_argument('-g', '--guiding',  help='retrieve and plot guiding ID/ACQ/Track images for this visit (within previous week).')
     parser.add_argument('-G', '--guiding_timeline',  help='retrieve log timeline of guiding events and images for this visit.')
     parser.add_argument('-P', '--guiding_performance',  help='plot guiding performance for this visit.')
@@ -294,6 +296,8 @@ def jwstops_main():
         jwstops_visitlog(args.visitlog)
     if args.program_status:
         jwstops_programstatus(args.program_status)
+    if args.dsn:
+        dsn_schedule()
 
     if args.guiding:
         jwstops_guiding(args.guiding)

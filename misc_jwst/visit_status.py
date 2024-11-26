@@ -174,3 +174,62 @@ def plot_used_wfsc_targets(target_summary):
                edgecolors='gray', lw=0.5,
                cmap= matplotlib.cm.coolwarm, marker='o') #, linestyle='none')
 
+
+def dsn_schedule():
+    """ Retrieve and display DSN contact schedule
+    """
+
+    import pandas
+    import requests
+    from io import StringIO, BytesIO
+    import pytz
+    import astropy.table, astropy.time, astropy.units as u
+
+    # Retreive schedule from web, and parse to astropy table, via Pandas
+    dsn_jwst_url = 'https://spsweb.fltops.jpl.nasa.gov/rest/ops/info/activity/JWST/'
+    req = requests.get(dsn_jwst_url)
+    tab = pandas.read_html(BytesIO(req.content))[0]   # Parse HTML to list of tables, then take the first and only table in that list
+    dsn_table = astropy.table.Table.from_pandas(tab)
+
+
+    # Convert beginning & end of transit times into astropy Time
+    dsn_table['BOT'] = astropy.time.Time(dsn_table['BOT'])
+    dsn_table['EOT'] = astropy.time.Time(dsn_table['EOT'])
+
+    # Find comm passes today-ish (between previous UTC midnight, and tomorrow UTC noon)
+    now = astropy.time.Time.now()
+    tstart, tend = astropy.time.Time(np.floor(now.mjd), format='mjd'), astropy.time.Time(np.ceil(now.mjd), format='mjd')
+    todays_dsn = (dsn_table['BOT'] > tstart) & (dsn_table['EOT'] < (tend+12*u.hour))
+
+    # now some timezone math
+    tz = pytz.timezone('US/Eastern')
+    dsn_table['BOT_Baltimore'] = [d.isoformat() for d in dsn_table['BOT'].to_datetime(tz)]
+    dsn_table['EOT_Baltimore'] = [d.isoformat() for d in dsn_table['EOT'].to_datetime(tz)]
+
+    # And print
+    print(f"      \t Location\tContact Time Period [UTC]        \tContact Time Period [Baltimore, US/Eastern]")
+    print(f"      \t---------\t------------------------------------\t-------------------------------------------")
+    shown_now = False
+    for i, row in enumerate(dsn_table[todays_dsn]):
+        ni = np.clip(i+1, 0, sum(todays_dsn)-1)
+        #print(i, ni)
+        next_row = dsn_table[todays_dsn][ni]
+        ant = row['FACILITY']
+        if ant < 30:
+            loc = 'Goldstone'
+        elif ant < 50:
+            loc = ' Canberra'
+        else:
+            loc = '   Madrid'
+
+        print(f"DSN-{ant}\t{loc}\t{row['BOT'].iso[0:16]} to {row['EOT'].iso[0:16]}\t{row['BOT_Baltimore'][0:16]} to {row['EOT_Baltimore'][0:16]}")
+        if not shown_now:
+            if (row['BOT']< now) and (row['EOT'] > now):
+                print(f"\t\t>> NOW: {now.iso[0:16]}\t\t\tDuring pass. Time remaining in contact: {(row['EOT']-now).to(u.hour):.2f}")
+                shown_now = True
+
+            elif (row['BOT']< now) and (next_row['BOT'] > now):
+                print(f"\t\t>> NOW: {now.iso[0:16]}\t\t\tBetween passes. Time to next contact: {(next_row['BOT']-now).to(u.hour):.2f}")
+                shown_now = True
+
+    print("\nThe above is based on the *planned* DSN schedule. Actual contact times may vary due to operational circumstances.")
