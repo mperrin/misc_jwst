@@ -207,8 +207,8 @@ def dsn_schedule():
     dsn_table['EOT_Baltimore'] = [d.isoformat() for d in dsn_table['EOT'].to_datetime(tz)]
 
     # And print
-    print(f"      \t Location\tContact Time Period [UTC]        \tContact Time Period [Baltimore, US/Eastern]")
-    print(f"      \t---------\t------------------------------------\t-------------------------------------------")
+    print(f"      \t Location\tContact Time Period [UTC]        \tContact Time [Baltimore, US/Eastern]\tActivity")
+    print(f"      \t---------\t------------------------------------\t------------------------------------\t--------")
     shown_now = False
     for i, row in enumerate(dsn_table[todays_dsn]):
         ni = np.clip(i+1, 0, sum(todays_dsn)-1)
@@ -222,7 +222,7 @@ def dsn_schedule():
         else:
             loc = '   Madrid'
 
-        print(f"DSN-{ant}\t{loc}\t{row['BOT'].iso[0:16]} to {row['EOT'].iso[0:16]}\t{row['BOT_Baltimore'][0:16]} to {row['EOT_Baltimore'][0:16]}")
+        print(f"DSN-{ant}\t{loc}\t{row['BOT'].iso[0:16]} to {row['EOT'].iso[0:16]}\t{row['BOT_Baltimore'][0:16]} to {row['EOT_Baltimore'][0:16]}\t{row['ACTIVITY']}")
         if not shown_now:
             if (row['BOT']< now) and (row['EOT'] > now):
                 print(f"\t\t>> NOW: {now.iso[0:16]}\t\t\tDuring pass. Time remaining in contact: {(row['EOT']-now).to(u.hour):.2f}")
