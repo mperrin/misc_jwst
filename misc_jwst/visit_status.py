@@ -38,7 +38,8 @@ def retrieve_status_tables(pid):
     # Find all tables in the HTML output
     for table in soup.findAll("table"):
         if table.findParent("table") is None:
-            status_tables.append(pd.read_html(str(table), header=0 )[0])
+            from io import StringIO
+            status_tables.append(pd.read_html(StringIO(str(table)), header=0 )[0])
 
     # Iterate over the tables, and adapt them to have common format and consistent column names
 

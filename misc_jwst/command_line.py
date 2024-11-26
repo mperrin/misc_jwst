@@ -135,6 +135,19 @@ def jwstops_visitlog(visitid, lookback=7*u.day):
         print(row['Time'][:-4], '\t', row['Message'])
 
 
+def jwstops_programstatus(program):
+    """ Query the JWST Program Information page
+    https://www.stsci.edu/public/jwst-program-info.html
+    """
+    import misc_jwst.visit_status as vs
+    tab = vs.query_program_status_form(program)
+    # tweak formatting a bit for display
+    vis_ids = [f'{program}:{o}:{v}' for o, v in zip(tab['Observation'], tab['Visit'])]
+    tab.insert(0, 'Visitid', vis_ids)
+    tab.drop('Observation', axis=1, inplace=True)
+    tab.drop('Visit', axis=1, inplace=True)
+    print(tab)
+
 def jwstops_guiding(visitid, lookback=7*u.day):
     import misc_jwst.guiding_analyses
     visitid = misc_jwst.utils.get_visitid(visitid)  # handle either input format
@@ -264,6 +277,7 @@ def jwstops_main():
     parser.add_argument('-t', '--time_deltas',  action='store_true', help='show timing delta between schedule and actual visit times.')
     parser.add_argument('-o', '--overview',  action='store_true', help='Ops overview; combines some of latest, schedule, and deltas')
     parser.add_argument('-v', '--visitlog',  help='retrieve OSS visit log for this visit (within previous week).')
+    parser.add_argument('-p', '--program_status',  help='Print status of program visit execution')
     parser.add_argument('-g', '--guiding',  help='retrieve and plot guiding ID/ACQ/Track images for this visit (within previous week).')
     parser.add_argument('-G', '--guiding_timeline',  help='retrieve log timeline of guiding events and images for this visit.')
     parser.add_argument('-P', '--guiding_performance',  help='plot guiding performance for this visit.')
@@ -278,6 +292,9 @@ def jwstops_main():
         jwstops_schedule(time_range=float(args.range)*u.hour)
     if args.visitlog:
         jwstops_visitlog(args.visitlog)
+    if args.program_status:
+        jwstops_programstatus(args.program_status)
+
     if args.guiding:
         jwstops_guiding(args.guiding)
     if args.guiding_timeline:
