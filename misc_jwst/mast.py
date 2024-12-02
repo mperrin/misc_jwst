@@ -15,6 +15,8 @@ import logging
 log = logging.getLogger(__name__)
 log.setLevel(logging.INFO)
 
+from tqdm import tqdm
+
 import misc_jwst.utils
 
 __all__ = ['jwst_keywords_query']
@@ -203,6 +205,9 @@ def get_visit_exposure_times(visitid, extra_columns=""):
     return exps_level2
 
 
+get_visit_start_end_times = query_visit_time # synonym, for API consistency
+
+
 def query_program_visit_times(program,  verbose=False):
     """ Get the start and end times of all completed visits in a program.
 
@@ -388,7 +393,7 @@ def summarize_jwst_observations(targname, radius='30s', exclude_ta=True):
     return sorted_results_dict
 
 
-def mast_retrieve_files(filenames, out_dir='.', verbose=True):
+def retrieve_files(filenames, out_dir='.', verbose=True):
     """Download one or more JWST data products from MAST, by filename
 
     If the file is already present in the specified local directory, it's not downloaded again.
@@ -408,7 +413,7 @@ def mast_retrieve_files(filenames, out_dir='.', verbose=True):
     else:
         headers=None
 
-    for p in filenames:
+    for p in tqdm(filenames):
         outfile = os.path.join(out_dir, p)
 
         if os.path.isfile(outfile):
@@ -435,3 +440,88 @@ def mast_retrieve_files(filenames, out_dir='.', verbose=True):
                 print("COMPLETE: ", outfile)
             outputs.append(outfile)
     return outputs
+
+mast_retrieve_files = retrieve_files # back compatibility
+download_files = retrieve_files # Name alias for convenience
+
+
+
+def get_mast_filename(filename, outputdir='.',
+                      overwrite=False, exists_ok=True,
+                      progress=False, verbose=True,
+                      return_in_memory=False,
+                      mast_api_token=None):
+    """Download any specified filename from MAST, writing to outputdir
+
+    If a file exists already, default is to not download.
+    Set overwrite=True to overwrite existing output file.
+    or set exists_ok=False to raise ValueError.
+
+    Set progress=True to show a progress bar.
+
+    verbose toggles on/off minor informative text output
+
+    return_in_memory returns the file directly as a variable, without writing to disk at all.
+
+    Other parameters are less likely to be useful:
+    Default mast_api_token comes from MAST_API_TOKEN environment variable.
+
+    Adapted from example code originally by Rick White, STScI, via archive help desk.
+    """
+
+    if not mast_api_token:
+        mast_api_token = os.environ.get('MAST_API_TOKEN')
+        if mast_api_token is None:
+            raise ValueError("Must define MAST_API_TOKEN env variable or specify mast_api_token parameter")
+    assert '/' not in filename, "Filename cannot include directories"
+
+    mast_url = "https://mast.stsci.edu/api/v0.1/Download/file"
+
+    if not os.path.exists(outputdir):
+        os.makedirs(outputdir)
+    elif not os.path.isdir(outputdir):
+        raise ValueError(f"Output location {outputdir} is not a directory")
+    elif not os.access(outputdir, os.W_OK):
+        raise ValueError(f"Output directory {outputdir} is not writable")
+
+    if return_in_memory:
+        import tempfile
+        file_open_func = functools.partial(tempfile.NamedTemporaryFile, mode='wb', delete=False )
+        outfile = 'temporary file in memory'
+    else:
+        outfile = os.path.join(outputdir, filename)
+        file_open_func = functools.partial(open, outname, mode='wb')
+
+    if (not overwrite) and os.path.exists(outfile):
+        if exists_ok:
+            if verbose:
+                print(" ALREADY DOWNLOADED: "+outfile)
+            return
+        else:
+            raise ValueError(f"{outfile} exists, not overwritten")
+
+    r = requests.get(mast_url, params=dict(uri=f"mast:JWST/product/{filename}"),
+                     headers=dict(Authorization=f"token {mast_api_token}"), stream=True)
+    r.raise_for_status()
+
+    total_size_in_bytes = int(r.headers.get('content-length', 0))
+    block_size = 1024000
+    if progress:
+        progress_bar = tqdm(total=total_size_in_bytes, unit='iB', unit_scale=True)
+        csize = 0
+    with file_open_func() as fd:
+        for data in r.iter_content(chunk_size=block_size):
+            fd.write(data)
+            if progress:
+                # use the size before uncompression
+                dsize = r.raw.tell()-csize
+                progress_bar.update(dsize)
+                csize += dsize
+    if progress:
+        progress_bar.close()
+        if total_size_in_bytes != 0 and progress_bar.n != total_size_in_bytes:
+            print("ERROR, something went wrong")
+    if verbose:
+        print(" DOWNLOAD SUCCESSFUL: "+outfile)
+    return fd
+

@@ -11,6 +11,9 @@ import functools
 import astropy.table
 import misc_jwst.utils
 
+# See also https://jwst-pipeline.readthedocs.io/en/latest/jwst/lib/engdb.html
+# for an alternative interface toolkit via the pipeline tools
+
 
 @functools.lru_cache
 def get_mnemonic(mnemonic, startdate='2022-02-01', enddate=None, mast_api_token=None, verbose=False,

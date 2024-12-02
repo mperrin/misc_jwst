@@ -207,6 +207,7 @@ def dsn_schedule():
     dsn_table['EOT_Baltimore'] = [d.isoformat() for d in dsn_table['EOT'].to_datetime(tz)]
 
     # And print
+    print(" ")
     print(f"      \t Location\tContact Time Period [UTC]        \tContact Time [Baltimore, US/Eastern]\tActivity")
     print(f"      \t---------\t------------------------------------\t------------------------------------\t--------")
     shown_now = False
@@ -232,4 +233,4 @@ def dsn_schedule():
                 print(f"\t\t>> NOW: {now.iso[0:16]}\t\t\tBetween passes. Time to next contact: {(next_row['BOT']-now).to(u.hour):.2f}")
                 shown_now = True
 
-    print("\nThe above is based on the *planned* DSN schedule. Actual contact times may vary due to operational circumstances.")
+    print("\nThe above is based on the *planned* DSN schedule. Actual contact times may vary due to operational circumstances.\n")
