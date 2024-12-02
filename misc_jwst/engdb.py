@@ -204,6 +204,8 @@ def visit_start_end_times(eventlog, visitid=None, return_table=False, verbose=Tr
                     note = alert_note
                 if (vid_fgs_start is None) and ('Script activated' in msg) and (msg.endswith('FGSMAIN') or msg.endswith('FGSMTMAIN')):
                     vid_fgs_start = 'T'.join(time.split())[:-3]
+                    if msg.endswith('FGSMTMAIN'):
+                        note = "[Moving Target]" if note == '' else note + " [Moving Target]"
     else:
         if in_visit:
             output.append(f'{vid} | {vstart:23} | ongoing            | '
