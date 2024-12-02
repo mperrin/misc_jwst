@@ -1,5 +1,4 @@
-import functools
-import os
+import functools, os
 
 import matplotlib, matplotlib.pyplot as plt
 import numpy as np
@@ -42,11 +41,12 @@ _ta_dither_sign = {'NRCALONG': [1, -1],
 
 
 @functools.lru_cache
-def get_visit_ta_image(visitid, verbose=True, kind='cal', inst='NIRCam', index=0, localpath=None):
+def get_visit_ta_image(visitid, verbose=True, kind='cal', inst='NIRCam', index=0, localpath=None, save_localpath=False):
     """Retrieve from MAST the NIRCam target acq image for a given visit.
 
     This retrieves an image (or images) from MAST and returns it as a HDUList variable
-    without writing to disk.
+    without writing to disk. If you want it to save to disk, set save_localpath=True
+
     - If only one TA file is found, that file is returned directly as an HDUList
     - If multiple TA files ar found (e.g. TACQ and TACONFIRM), a list is returned
       containing all of them.
@@ -120,6 +120,11 @@ def get_visit_ta_image(visitid, verbose=True, kind='cal', inst='NIRCam', index=0
                     ta_hdul = astropy.io.fits.open(local_file_cache_path)
                 else:
                     raise  # re-raise any errors other than 401 for permissions denied
+            if save_localpath:
+                local_file_cache_path = localpath if localpath is not None else f'./{filename}'
+                ta_hdul.writeto(local_file_cache_path)
+                print(f"Saved to {local_file_cache_path}")
+
         files_found.append(ta_hdul)
 
     if nfiles==1:
@@ -161,6 +166,28 @@ def _crop_display_for_miri(ax, hdul):
         ax.set_ylim(269, 269+boxsize)
 
 
+def _crop_display_for_nirspec(ax, hdul):
+    """ Set xlim and ylim to crop the display region for a MIRI TA image
+    Many MIRI WATA images use full array or a larger subarray, even though only a subarray is of interest.
+    """
+    # Note, this would be more elegant to look up from siaf but we just hard-code values here since none of this will ever change.
+    # Plus, NIRSpec subarray parameters turn out not to be in SIAF at all!
+
+    apname = hdul[0].header['APERNAME']
+    subarray_name = hdul[0].header['SUBARRAY']
+
+    if apname=='NRS_S1600A1_SLIT':
+        if subarray_name == 'SUB32':
+            pass # no cropping needed
+        elif subarray_name == 'SUB2048':
+            # crop displayed region to be consistent with the SUB32 view
+            ax.set_xlim(1398-0.5, 1398+32-0.5)
+            # no ylim crop needed, this is already only 32 pix tall
+        elif subarray_name == 'FULL':
+            # crop displayed region to be consistent with the SUB32 view
+            ax.set_xlim(1398-0.5, 1398+32-0.5)
+            ax.set_ylim(974-0.5, 975+32-0.5)
+
 
 def show_ta_img(visitid, ax=None, return_handles=False, inst='NIRCam', mark_reference_point=True, mark_apername=True, ta_expnum=None, **kwargs):
     """ Retrieve and display a target acq image"""
@@ -177,8 +204,14 @@ def show_ta_img(visitid, ax=None, return_handles=False, inst='NIRCam', mark_refe
             raise ValueError(f"You must specify ta_expnum=<n> to select which of {len(hdul)} TA exposures to show (using 1-based indexing)")
         else:
             hdul = hdul[ta_expnum-1]
-            if inst.upper() != 'MIRI':
+            if inst.upper() not in ['NIRCAM', 'NIRISS'] :
+                # These can have dithered 3x TAs, so print the exp number on each for those cases
                 title_extra = f' exp #{ta_expnum}'
+            if inst.upper() == 'NIRSPEC':
+                if 'WATA' in hdul[0].header['EXP_TYPE']:
+                    title_extra = ' (WATA)'
+                elif 'MSATA' in hdul[0].header['EXP_TYPE']:
+                    title_extra = ' (MSATA)'
             if 'CONF' in hdul[0].header['EXP_TYPE']:
                 title_extra = 'CONFIRM'
 
@@ -189,15 +222,24 @@ def show_ta_img(visitid, ax=None, return_handles=False, inst='NIRCam', mark_refe
     bglevel = rmedian
 
     vmax = np.nanmax(ta_img) - bglevel
+    asinh_linear_width = vmax*0.003
+    # special case NIRSpec
+    if inst.upper() == 'NIRSPEC' and hdul[0].header['SUBARRAY'] == 'FULL':
+        # set vmin, vmax just based on the region around the S1600 aperture for WATA
+        vmax = np.nanmax(ta_img[974:974+32, 1399:1399+32]) - bglevel
+        # set linear width based on bg level inside the S1600 aperture
+        asinh_linear_width = np.max([np.nanmedian(ta_img[1407:1407+16, 983:983+16])*2, vmax*0.003])
     cmap = matplotlib.cm.viridis.copy()
     cmap.set_bad('orange')
 
 
-    norm = matplotlib.colors.AsinhNorm(linear_width = vmax*0.003, vmax=vmax, #vmin=0)
+    print('vmin, vmax, asinh_linear', -1*rsig, vmax, asinh_linear_width)
+    norm = matplotlib.colors.AsinhNorm(linear_width = asinh_linear_width, vmax=vmax, #vmin=0)
                                        vmin=-1*rsig)
 
     model = jwst.datamodels.open(hdul)
-    annotation_text = f"{model.meta.target.proposer_name}\n{model.meta.instrument.filter}, {model.meta.exposure.readpatt}:{model.meta.exposure.ngroups}:{model.meta.exposure.nints}\n{model.meta.exposure.effective_exposure_time:.2f} s"
+    annotate_subarray = f"\n{model.meta.subarray.name} " if inst.upper() == "NIRSPEC" else ""
+    annotation_text = f"{model.meta.target.proposer_name}\n{model.meta.instrument.filter}, {model.meta.exposure.readpatt}:{model.meta.exposure.ngroups}:{model.meta.exposure.nints}{annotate_subarray}\n{model.meta.exposure.effective_exposure_time:.2f} s"
 
     if ax is None:
         ax = plt.gca()
@@ -209,6 +251,9 @@ def show_ta_img(visitid, ax=None, return_handles=False, inst='NIRCam', mark_refe
 
     if inst.upper() == 'MIRI':
         _crop_display_for_miri(ax, hdul)
+    elif inst.upper() == 'NIRSPEC':
+        _crop_display_for_nirspec(ax, hdul)
+
 
     if mark_reference_point:
         xref, yref = get_ta_reference_point(inst, hdul, ta_expnum)
@@ -1115,7 +1160,7 @@ def nrs_ta_centroids_and_offsets(model, box_size = 16, plot=True, saveplot=True,
             subarray_name = model.meta.subarray.name
 
 
-        if subarray_name =='SUB2048':
+        if subarray_name =='SUB2048': # NIRSpec
             # crop displayed region to be conssitent with the SUB32 view
             ax0.set_xlim(1398-0.5, 1398+32-0.5)
             # Y axis is already cropped to 32 pixels in this case.
@@ -1229,8 +1274,8 @@ def nirspec_wata_ta_analysis(visitid, verbose=True, show_centroids=True):
     for i_ta_image in range(n_ta_images):
         ax = axes[i_ta_image]
 
-        hdul, ax, norm, cmap, bglevel = show_ta_img(visitid, ax=ax, return_handles=True, ta_expnum=i_ta_image, inst='NIRSpec',
-                                                   mark_reference_point=False, verbose=True)
+        hdul, ax, norm, cmap, bglevel = show_ta_img(visitid, ax=ax, return_handles=True, ta_expnum=i_ta_image+1, inst='NIRSpec',
+                                                   mark_reference_point=False, verbose=True, save_localpath=True)
 
         model = jwst.datamodels.open(ta_files[i_ta_image])
 
@@ -1262,22 +1307,34 @@ def nirspec_wata_ta_analysis(visitid, verbose=True, show_centroids=True):
             print(f"WCS offset relative to OSS: {wcs_offset}")
 
 
-        # Now do some plots
-        #ax.add_artist(matplotlib.patches.Rectangle((cutout.xmin_original, cutout.ymin_original), box_size, box_size,
-        #                    edgecolor='yellow', facecolor='none'))
-
-        # Check subarray name, if necessary working around API changes in datamodels
+       # Check subarray name, if necessary working around API changes in datamodels
         try:
             subarray_name = model.meta.exposure.subarray
         except AttributeError:
             subarray_name = model.meta.subarray.name
 
-
+        # Cutout subregion just around the S1600A1 aperture
         if subarray_name =='SUB2048':
             # crop displayed region to be conssitent with the SUB32 view
             ax.set_xlim(1398-0.5, 1398+32-0.5)
             # Y axis is already cropped to 32 pixels in this case.
-            # TODO also hadnle the FULL TA case ?
+            s1600_corner = (1407, 9)
+        elif subarray_name== 'SUB32':
+            # already cropped, with FITS SUBSTRT = (1399, 975) [1-based indices]
+            s1600_corner = (9, 9)
+        elif subarray_name== 'FULL':
+            s1600_corner = (1407, 974+9)
+        cutout_boxsize = 19   # A bit bigger than the S1600 aperture
+        s1600_center = [c + (cutout_boxsize-1)/2 for c in s1600_corner]
+        cutout = astropy.nddata.Cutout2D(model.data, s1600_center, cutout_boxsize)
+
+        # Now do some plots
+        # Mark location of the S1600 square aperture
+        s1600_boxsize = 16
+        ax.add_artist(matplotlib.patches.Rectangle(s1600_corner, box_size, box_size,
+                            edgecolor='yellow', facecolor='none', linestyle='--'))
+
+
         if model.meta.filename == 'contents':
             # put a better more descriptive label on the plot
             ax.set_title(f'NIRSpec {model.meta.exposure.type} for V{model.meta.observation.visit_id}')
@@ -1307,7 +1364,7 @@ def nirspec_wata_ta_analysis(visitid, verbose=True, show_centroids=True):
         deltapos_type = '[TBD]'
 
 
-        image_text = f"Pixel coordinates (0-based):         \n{oss_centroid_text}\n webbpsf measure_centroid: {cen[1]:.2f}, {cen[0]:.2f}\n{wcs_text}\n{aperture_text}\n$\\Delta$pos ({deltapos_type}): {deltapos[0]:.2f}, {deltapos[1]:.2f}"
+        image_text = f"Pixel coordinates (0-based):         \n{oss_centroid_text}\n poppy fwcentroid: {cen[1]:.2f}, {cen[0]:.2f}\n{wcs_text}\n{aperture_text}\n$\\Delta$pos ({deltapos_type}): {deltapos[0]:.2f}, {deltapos[1]:.2f}"
 
         axes[i_ta_image].text(0.95, 0.04, image_text,
                      horizontalalignment='right', verticalalignment='bottom',
