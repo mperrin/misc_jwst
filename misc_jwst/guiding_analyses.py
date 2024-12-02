@@ -384,7 +384,7 @@ def guiding_performance_plot(sci_filename=None, visitid=None, verbose=True, save
             centroid_table = astropy.table.vstack([centroid_table, centroid_table_more], metadata_conflicts='silent')
             display_gs_fn = os.path.basename(gs_fn)[0:33]+ "-seg*_cal.fits"
     if visit_mode:
-        display_gs_fn = f"All (n={len(gs_fns)}) guidestar files for {visitid}"
+        display_gs_fn = f"All (n={len(gs_fns)}) guidestar Fine Guide files for {visitid}"
 
     mask = centroid_table.columns['bad_centroid_dq_flag'] == 'GOOD'
 
@@ -455,6 +455,11 @@ def guiding_performance_plot(sci_filename=None, visitid=None, verbose=True, save
         axes[1].axvspan(t_beg.plot_date, t_end.plot_date, color='green', alpha=0.15)
         axes[2].axvspan(t_beg.plot_date, t_end.plot_date, color='green', alpha=0.15)
     else:
+        # Annotate start of each FG file
+        for i, gs_fn in enumerate(gs_fns):
+            start_time = dither_times[i-1] if i>0 else ptimes.min()
+            axes[0].text(start_time.plot_date, 1.5e-2, os.path.basename(gs_fn), fontsize='x-small', clip_on=True)
+        # Mark dithers with vertical lines
         for dithertime in dither_times:
            for ax in axes:
                 ax.axvline(dithertime.plot_date, color='black', ls='--')
