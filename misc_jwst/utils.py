@@ -1,4 +1,6 @@
 import functools
+import astropy, astropy.units as u
+import jwst.datamodels
 
 def get_visitid(visitstr):
     """ Common util function to handle several various kinds of visit specification"""
@@ -7,6 +9,9 @@ def get_visitid(visitstr):
     elif ':' in visitstr:
         # This is PPS format visit ID, like 4503:31:1
         parts = [int(p) for p in visitstr.split(':')]
+        if len(parts) == 2:
+            # if given only like 4503:31, assume the visit number is 1
+            parts.append(1)
         return f"V{parts[0]:05d}{parts[1]:03d}{parts[2]:03d}"
 
 
@@ -35,3 +40,16 @@ def get_siaf(inst):
     """
     import pysiaf
     return pysiaf.Siaf(inst)
+
+
+
+def get_target_coords(model):
+    """Get target coordinates at epoch of observation from metadata
+    returns as astropy coordinates"""
+    return astropy.coordinates.SkyCoord(model.meta.target.ra,
+                                        model.meta.target.dec,
+                                        frame='icrs', unit=u.deg)
+
+
+def get_obsid_for_filenames(model):
+    return f'jw{model.meta.observation.program_number}obs{model.meta.observation.observation_number}exp{model.meta.observation.exposure_number}'
