@@ -128,9 +128,10 @@ def _check_log_and_note_issues(msg, prior_note=None):
         note = msg
         if prior_note is not None:
             note = note + ". " + prior_note
+    elif 'GENRTVSTMAIN' in msg:
+        note = "Realtime Commanding Visit. "
     else:
         note = None
-
 
     return note
 
@@ -153,8 +154,9 @@ def visit_start_end_times(eventlog, visitid=None, return_table=False, verbose=Tr
     vid = ''
     in_visit = False
     in_selected_visit = False
+    in_parallel_list = False
 
-    outputs = {k: [] for k in ['visitid', 'visitstart', 'visit_fgs_start', 'visitend', 'duration', 'notes']}
+    outputs = {k: [] for k in ['visitid', 'visitstart', 'visit_fgs_start', 'visitend', 'duration', 'parallels', 'notes']}
 
     output = []
     output.append('Visit ID     | Visit Start             | Visit End'
@@ -168,6 +170,7 @@ def visit_start_end_times(eventlog, visitid=None, return_table=False, verbose=Tr
                 vstart = 'T'.join(time.split())[:-3]
                 vid = msg.split()[1]
                 vid_fgs_start = None
+                current_visit_parallels = []
 
                 # for debugging:
                 #print("**", value)
@@ -185,6 +188,7 @@ def visit_start_end_times(eventlog, visitid=None, return_table=False, verbose=Tr
                 outputs['visit_fgs_start'].append(str(vid_fgs_start))
                 outputs['visitend'].append(vend)
                 outputs['duration'].append(dur.total_seconds())
+                outputs['parallels'].append(current_visit_parallels)
                 outputs['notes'].append(note)
 
                 in_visit = False
@@ -205,7 +209,12 @@ def visit_start_end_times(eventlog, visitid=None, return_table=False, verbose=Tr
                 if (vid_fgs_start is None) and ('Script activated' in msg) and (msg.endswith('FGSMAIN') or msg.endswith('FGSMTMAIN')):
                     vid_fgs_start = 'T'.join(time.split())[:-3]
                     if msg.endswith('FGSMTMAIN'):
-                        note = "[Moving Target]" if note == '' else note + " [Moving Target]"
+                        note = "[Moving Target] " if note == '' else note + " [Moving Target] "
+                if 'contains the following Parallel IDs' in msg:
+                    in_parallel_list = True
+                elif in_parallel_list:
+                    current_visit_parallels = msg.split()
+                    in_parallel_list = False
     else:
         if in_visit:
             output.append(f'{vid} | {vstart:23} | ongoing            | '
@@ -215,7 +224,9 @@ def visit_start_end_times(eventlog, visitid=None, return_table=False, verbose=Tr
             outputs['visit_fgs_start'].append(str(vid_fgs_start))
             outputs['visitend'].append('T'.join(time.split())[:-3])
             outputs['duration'].append(-1)
-            outputs['notes'].append('Still ongoing at end of available log.')
+            outputs['parallels'].append(current_visit_parallels)
+            note += 'Still ongoing at end of available log.'
+            outputs['notes'].append(note )
 
 
 
@@ -248,9 +259,11 @@ def visit_start_end_times(eventlog, visitid=None, return_table=False, verbose=Tr
                     t[i]['visit_fgs_start'] = t[i]['visitstart'].isot
                     # print a note to let the user know -- but don't do this if there is already a note of
                     # some issue with the visit, such that it halted before taking FGSMAIN.
-                    if 'visit halted' not in t[i]['notes']:
+                    if 'visit halted' not in t[i]['notes'] and verbose:
                         print(f'could not find FGSMAIN start time in log for visit {t[i]["visitid"]}')
-                    t[i]['notes'] = t[i]['notes'] + " No FGSMAIN start time in log."
+                    # Mark if no FGSMAIN found, except if it's a kind of visit for which we don't expect guiding.
+                    if 'Realtime' not in t[i]['notes']:
+                        t[i]['notes'] = t[i]['notes'] + " No FGSMAIN start time in log."
             t['visit_fgs_start'] = astropy.time.Time(t['visit_fgs_start'])
 
         return(t)

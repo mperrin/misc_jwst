@@ -61,20 +61,21 @@ def get_schedule_table():
     second_link = divs[2].find_all('a')[1]
     schedule_url_2 = 'https://www.stsci.edu' + second_link.attrs['href']
 
-
-
     # Obtain the most recent 2 schedules
-    schedule1 = requests.get(schedule_url_1)
-    schedule2 = requests.get(schedule_url_2)
+    sched_tables = []
+    op_package_labels = []
+    for link in [first_link, second_link]:
+        schedule_url = 'https://www.stsci.edu' + link.attrs['href']
+        schedule = requests.get(schedule_url)
+        # Parse it into a table
+        sched_lines = schedule.content.decode().splitlines()
+        op_package_labels.append(sched_lines[0].split()[-1])
+        sched_tables.append( astropy.io.ascii.read(sched_lines[2:],
+                          format='fixed_width_two_line'))
 
-
-    # Parse it into a table
-    sched_table1 = astropy.io.ascii.read(schedule1.content.decode().splitlines()[2:],
-                          format='fixed_width_two_line')
-    sched_table2 = astropy.io.ascii.read(schedule2.content.decode().splitlines()[2:],
-                          format='fixed_width_two_line')
-
-    sched_table = astropy.table.vstack([sched_table2, sched_table1])  # last-but-one week, then current/latest week
+    sched_table = astropy.table.vstack(sched_tables)  # last-but-one week, then current/latest week
+    sched_table.meta['op_packages'] = op_package_labels
+    sched_table.meta['week2_start_time'] = sched_tables[-1][0]['SCHEDULED START TIME']  # boundary between the two weeks
     return sched_table
 
 
@@ -277,12 +278,13 @@ def jwstops_main():
     parser.add_argument('-s', '--schedule',  action='store_true', help='show OSS observing plan schedule')
     parser.add_argument('-t', '--time_deltas',  action='store_true', help='show timing delta between schedule and actual visit times.')
     parser.add_argument('-o', '--overview',  action='store_true', help='Ops overview; combines some of latest, schedule, and deltas')
+    parser.add_argument('-P', '--schedule_plot',  action='store_true', help='Ops overview PDF plot; combines some of latest, schedule, and deltas')
     parser.add_argument('-v', '--visitlog',  help='retrieve OSS visit log for this visit (within previous week).')
     parser.add_argument('-p', '--program_status',  help='Print status of program visit execution')
     parser.add_argument('--dsn', action='store_true',  help='Print DSN communications pass schedule.')
     parser.add_argument('-g', '--guiding',  help='retrieve and plot guiding ID/ACQ/Track images for this visit (within previous week).')
     parser.add_argument('-G', '--guiding_timeline',  help='retrieve log timeline of guiding events and images for this visit.')
-    parser.add_argument('-P', '--guiding_performance',  help='plot guiding performance for this visit.')
+    parser.add_argument('--guiding_performance',  help='plot guiding performance for this visit.')
     parser.add_argument('-d', '--durations',  help='retrieve OSS visit event durations for this visit (within previous week).')
     parser.add_argument('-r', '--range',  default=48.0, help='Set time range in hours forward/back for displaying schedules. (default = 48 hours)')
 
@@ -313,4 +315,8 @@ def jwstops_main():
         jwstops_deltas(lookback=float(args.range)*u.hour)
     if args.overview:
         jwstops_overview(lookback=float(args.range)*u.hour)
+    if args.schedule_plot:
+        # import here to avoid circular import at runtime
+        from misc_jwst.schedule_plot import schedule_plot
+        schedule_plot(trange=float(args.range)*u.hour)
 
