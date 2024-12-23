@@ -175,7 +175,7 @@ def plot_used_wfsc_targets(target_summary):
                cmap= matplotlib.cm.coolwarm, marker='o') #, linestyle='none')
 
 
-def dsn_schedule():
+def dsn_schedule(return_table=False, verbose=True, lookback=0.5*u.day):
     """ Retrieve and display DSN contact schedule
     """
 
@@ -199,6 +199,7 @@ def dsn_schedule():
     # Find comm passes today-ish (between previous UTC midnight, and tomorrow UTC noon)
     now = astropy.time.Time.now()
     tstart, tend = astropy.time.Time(np.floor(now.mjd), format='mjd'), astropy.time.Time(np.ceil(now.mjd), format='mjd')
+    tstart -= lookback
     todays_dsn = (dsn_table['BOT'] > tstart) & (dsn_table['EOT'] < (tend+12*u.hour))
 
     # now some timezone math
@@ -207,30 +208,34 @@ def dsn_schedule():
     dsn_table['EOT_Baltimore'] = [d.isoformat() for d in dsn_table['EOT'].to_datetime(tz)]
 
     # And print
-    print(" ")
-    print(f"      \t Location\tContact Time Period [UTC]        \tContact Time [Baltimore, US/Eastern]\tActivity")
-    print(f"      \t---------\t------------------------------------\t------------------------------------\t--------")
-    shown_now = False
-    for i, row in enumerate(dsn_table[todays_dsn]):
-        ni = np.clip(i+1, 0, sum(todays_dsn)-1)
-        #print(i, ni)
-        next_row = dsn_table[todays_dsn][ni]
-        ant = row['FACILITY']
-        if ant < 30:
-            loc = 'Goldstone'
-        elif ant < 50:
-            loc = ' Canberra'
-        else:
-            loc = '   Madrid'
+    if verbose:
+        print(" ")
+        print(f"      \t Location\tContact Time Period [UTC]        \tContact Time [Baltimore, US/Eastern]\tActivity")
+        print(f"      \t---------\t------------------------------------\t------------------------------------\t--------")
+        shown_now = False
+        for i, row in enumerate(dsn_table[todays_dsn]):
+            ni = np.clip(i+1, 0, sum(todays_dsn)-1)
+            #print(i, ni)
+            next_row = dsn_table[todays_dsn][ni]
+            ant = row['FACILITY']
+            if ant < 30:
+                loc = 'Goldstone'
+            elif ant < 50:
+                loc = ' Canberra'
+            else:
+                loc = '   Madrid'
 
-        print(f"DSN-{ant}\t{loc}\t{row['BOT'].iso[0:16]} to {row['EOT'].iso[0:16]}\t{row['BOT_Baltimore'][0:16]} to {row['EOT_Baltimore'][0:16]}\t{row['ACTIVITY']}")
-        if not shown_now:
-            if (row['BOT']< now) and (row['EOT'] > now):
-                print(f"\t\t>> NOW: {now.iso[0:16]}\t\t\tDuring pass. Time remaining in contact: {(row['EOT']-now).to(u.hour):.2f}")
-                shown_now = True
+            print(f"DSN-{ant}\t{loc}\t{row['BOT'].iso[0:16]} to {row['EOT'].iso[0:16]}\t{row['BOT_Baltimore'][0:16]} to {row['EOT_Baltimore'][0:16]}\t{row['ACTIVITY']}")
+            if not shown_now:
+                if (row['BOT']< now) and (row['EOT'] > now):
+                    print(f"\t\t>> NOW: {now.iso[0:16]}\t\t\tDuring pass. Time remaining in contact: {(row['EOT']-now).to(u.hour):.2f}")
+                    shown_now = True
 
-            elif (row['BOT']< now) and (next_row['BOT'] > now):
-                print(f"\t\t>> NOW: {now.iso[0:16]}\t\t\tBetween passes. Time to next contact: {(next_row['BOT']-now).to(u.hour):.2f}")
-                shown_now = True
+                elif (row['BOT']< now) and (next_row['BOT'] > now):
+                    print(f"\t\t>> NOW: {now.iso[0:16]}\t\t\tBetween passes. Time to next contact: {(next_row['BOT']-now).to(u.hour):.2f}")
+                    shown_now = True
 
-    print("\nThe above is based on the *planned* DSN schedule. Actual contact times may vary due to operational circumstances.\n")
+        print("\nThe above is based on the *planned* DSN schedule. Actual contact times may vary due to operational circumstances.\n")
+
+    if return_table:
+        return dsn_table[todays_dsn]

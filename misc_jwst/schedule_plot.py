@@ -7,6 +7,7 @@ from misc_jwst.command_line import _short_modes
 import misc_jwst.visit_status
 import collections
 import textwrap
+import pytz
 
 
 def setup_plot(ax=None, tstart=None, tend=None):
@@ -41,7 +42,7 @@ def setup_plot(ax=None, tstart=None, tend=None):
     axes[2].xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m-%d\nDay of year %j'))
     axes[2].text(now.plot_date+0.005, 0.1, "Current Time Now", color='green', rotation=90)
 
-    return axes
+    return fig, axes
 
 
 def duration_to_timedelta(duration):
@@ -83,7 +84,7 @@ def draw_box(tstart, tend, ypos, height, color='white', edgecolor='black', text=
     horizontalalignment = 'left' if is_brief_visit else 'center'
     clip_on = False if is_brief_visit else True
     text_xpos = tstart.plot_date+0.005 if is_brief_visit else (tstart.plot_date + tend.plot_date)/2
-    text_ypos = ypos - (text_offset-1)*height/3 * is_brief_visit
+    text_ypos = ypos - (text_offset-1)*height/3.2 * is_brief_visit
 
     xlim = ax.get_xlim()
     if xlim[0] < text_xpos < xlim[1]:
@@ -212,7 +213,7 @@ def schedule_plot(trange = 1*u.day, open_plot=True, verbose=True):
     ###--------------------  Plot the plot !-----------------------------------------
     if verbose:
         print("Plotting visit status...")
-    axes = setup_plot(tstart=tstart, tend=tend)
+    fig, axes = setup_plot(tstart=tstart, tend=tend)
 
     ### Draw boxes for the scheduled visits
 
@@ -232,9 +233,9 @@ def schedule_plot(trange = 1*u.day, open_plot=True, verbose=True):
         if nparallels > 0:
             for i_parallel, (parallel_type, parallel_visit, parallel_index) in  enumerate(attached_parallels[row['VISIT ID']]):
                 pheight = 0.22 if nparallels < 3 else 0.15
-
+                poffset = 0 if nparallels < 3 else 0.04 
                 p_long_mode, p_mode, p_targ,  p_color = get_visit_info(schedule_full[parallel_index])
-                draw_box(row['start_time'], row['end_time'], 0.6 + i_parallel*(pheight-0.01), pheight, ax=axes[0],
+                draw_box(row['start_time'], row['end_time'], 0.6 + i_parallel*(pheight) - poffset, pheight, ax=axes[0],
                         color = p_color,
                         text = p_mode + "\n" + parallel_visit,
                         text_offset = text_offsets[row['VISIT ID']], time_range_start=tstart, time_range_end=tend)
@@ -258,7 +259,7 @@ def schedule_plot(trange = 1*u.day, open_plot=True, verbose=True):
                 #print(f"latest visit ΔT: {delta_time.to_value(u.hour):+.2f} hr")
                 axes[2].text(row['visit_fgs_start'].plot_date, -0.3, f"Latest visit ΔT:\n{delta_time.to_value(u.hour):+.2f} hr")
                 for ax in axes[0:2]:
-                    ax.axvline(sched_start_time.plot_date, ls=':', color='0.5')
+                    ax.axvline(row['visit_fgs_start'].plot_date, ls=':', color='0.5')
             
         except IndexError:
             # Handle case where there is no match in the schedule, e.g. due to an intercept, and the published schedule is not yet updated.
@@ -276,9 +277,10 @@ def schedule_plot(trange = 1*u.day, open_plot=True, verbose=True):
 
         if (nparallels := len(attached_parallels[row['VISIT ID']])) > 0:
             pheight = 0.22 if nparallels < 3 else 0.15
+            poffset = 0 if nparallels < 3 else 0.04 
             for i_parallel, (parallel_type, parallel_visit, parallel_index) in  enumerate(attached_parallels[row['VISIT ID']]):
                 p_long_mode, p_mode, p_targ,  p_color = get_visit_info(schedule_full[parallel_index])
-                draw_box(row['visit_fgs_start'], row['visitend'], 0.6 + i_parallel*pheight, pheight, ax=axes[1],
+                draw_box(row['visit_fgs_start'], row['visitend'], 0.6 + i_parallel*pheight - poffset, pheight, ax=axes[1],
                         color = p_color,
                         text = p_mode + "\n" + parallel_visit,
                         text_offset = text_offsets[row['VISIT ID']], time_range_start=tstart, time_range_end=tend)
@@ -320,12 +322,16 @@ def schedule_plot(trange = 1*u.day, open_plot=True, verbose=True):
 
     for ax in axes:
         ax.set_xlim(tstart.plot_date, tend.plot_date)
+
+    tz = pytz.timezone('US/Eastern')
+    fig.text(0.01, 0.01, f"Updated:       {now.iso[0:16]} UTC       {now.to_datetime(tz).isoformat()[0:16]} Baltimore",
+             fontsize='small')
     plt.tight_layout()
     plt.savefig('current_timeline_plot.png')
     if open_plot:
         import os
         os.system("open current_timeline_plot.png")
     if verbose:
-        print("Saved to urrent_timeline_plot.png")
+        print("Saved to current_timeline_plot.png")
 
 
