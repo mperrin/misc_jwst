@@ -1,4 +1,3 @@
-# RvdM 12/10/2024: added import of required package in next line
 import functools
 import os
 
@@ -491,7 +490,6 @@ def get_mast_filename(filename, outputdir='.',
         outfile = 'temporary file in memory'
     else:
         outfile = os.path.join(outputdir, filename)
-# RvdM 12/10/2024: bug fixed in next line
         file_open_func = functools.partial(open, outfile, mode='wb')
     if (not overwrite) and os.path.exists(outfile):
         if exists_ok:

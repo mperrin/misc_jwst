@@ -13,7 +13,6 @@ import warnings
 
 import matplotlib, matplotlib.pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
-# RvdM 12/10/2024: added import of required package in next line
 import mpl_scatter_density
 
 
