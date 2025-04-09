@@ -223,7 +223,6 @@ def visit_start_end_times(eventlog, visitid=None, return_table=False, verbose=Tr
 
     if visitid and verbose:
         print(output[0])
-# RvdM 12/10/2024: bug fixed in next line        
         visitid_std = misc_jwst.utils.get_visitid(visitid)  # handle either possible input format
         for row in output:
             if visitid_std in row:
