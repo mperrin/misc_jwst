@@ -1,4 +1,4 @@
-
+import functools
 import os
 
 import numpy as np
@@ -490,8 +490,7 @@ def get_mast_filename(filename, outputdir='.',
         outfile = 'temporary file in memory'
     else:
         outfile = os.path.join(outputdir, filename)
-        file_open_func = functools.partial(open, outname, mode='wb')
-
+        file_open_func = functools.partial(open, outfile, mode='wb')
     if (not overwrite) and os.path.exists(outfile):
         if exists_ok:
             if verbose:
