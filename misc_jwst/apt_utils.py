@@ -6,7 +6,13 @@ import lxml.etree as etree
 
 import numpy as np
 
-import mirage.apt.read_apt_xml as read_apt_xml
+def get_read_apt_xml():
+    try:
+        import mirage.apt.read_apt_xml as read_apt_xml
+        return read_apt_xml
+    except ImportError:
+        raise RuntimeError("The package 'mirage' is required to use this function. This is an optional dependency for misc_jwst")
+
 
 ## Globals
 
@@ -127,6 +133,7 @@ def summarize_program(progid):
     print(progid)
 
     # Read in the APT XML, using MIRAGE's code for that.
+    read_apt_xml = get_read_apt_xml()
     reader = read_apt_xml.ReadAPTXML()
 
     xmlfn = f'{progid}.xml'
@@ -174,6 +181,7 @@ def get_program_obslabels(progid):
         download_apt_xml(progid)
 
     # Read in the APT XML, using MIRAGE's code for that.
+    read_apt_xml = get_read_apt_xml()
     reader = read_apt_xml.ReadAPTXML()
     try:
         res = reader.read_xml(xmlfn, verbose=False)
@@ -261,7 +269,7 @@ def timing_summary_from_json_to_excel(progid, workbook_in=None, include_descript
 
     print(f'--- {prog_id}')
     if include_descriptions and prog_id not in skip_programs:
-        import mirage.apt.read_apt_xml as read_apt_xml
+        read_apt_xml = get_read_apt_xml()
         reader = read_apt_xml.ReadAPTXML()
         res = reader.read_xml(f'{progid}.xml', verbose=False)
 
