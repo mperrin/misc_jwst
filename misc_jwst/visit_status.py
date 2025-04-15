@@ -28,7 +28,7 @@ def parse_plan_window(text):
 def retrieve_status_tables(pid):
     """"""
     # Retrieve the web form, and parse the HTML
-    jwst_status_form_url=f'https://www.stsci.edu/cgi-bin/get-visit-status?id={pid}&markupFormat=html&observatory=JWST&pi=1'
+    jwst_status_form_url=f'https://www.stsci.edu/jwst-program-info/visits/?program={pid}&markupFormat=html&observatory=JWST&pi=1'
     req = requests.get(jwst_status_form_url,)
     soup = BeautifulSoup(req.content, 'html.parser')
 
@@ -95,6 +95,66 @@ def query_program_status_form(pid, cast_to_time=False):
     return combined_table
 
 
+def query_program_status_form_obsvis(pid, oid, vid, cast_to_time=False):
+    """Query the JWST Program Status Information form, and retrieve visit status, for a fixed program,observation,visit combination 
+
+    That web form returns one or more tables.
+
+    Retuns a pandas Dataframe that contains the merged, concatenated contents of all those
+    tables together.
+    """
+
+    status_tables = retrieve_status_tables(pid)
+
+    # Concatenate together the tables
+    combined_table = pd.concat(status_tables, ignore_index=True)
+
+
+    if cast_to_time:
+        # Cast the start/end times from strings into astropy.time.Time
+        start_ut = astropy.time.Time.strptime(np.array(combined_table['Start UT'], str), "%b %d, %Y %X")
+        end_ut =  astropy.time.Time.strptime(np.array(combined_table['End UT'], str), "%b %d, %Y %X")
+        combined_table['Start'] = start_ut
+        combined_table['End'] = end_ut
+        del combined_table['Start UT']
+        del combined_table['End UT']
+
+    return combined_table[(combined_table['Observation'] == oid) & (combined_table['Visit'] == vid)] 
+
+
+def query_program_status_form_visitid(visitid, cast_to_time=False):
+    """Query the JWST Program Status Information form, and retrieve visit status, for a given input visitid
+
+    That web form returns one or more tables.
+
+    Display a pandas Dataframe that contains the merged, concatenated contents of all those
+    tables together.
+    """
+
+    pid = int(visitid[1:6])
+    oid = int(visitid[6:9])
+    vid = int(visitid[9:12])
+    
+    status_tables = retrieve_status_tables(pid)
+
+    # Concatenate together the tables
+    combined_table = pd.concat(status_tables, ignore_index=True)
+
+
+    if cast_to_time:
+        # Cast the start/end times from strings into astropy.time.Time
+        start_ut = astropy.time.Time.strptime(np.array(combined_table['Start UT'], str), "%b %d, %Y %X")
+        end_ut =  astropy.time.Time.strptime(np.array(combined_table['End UT'], str), "%b %d, %Y %X")
+        combined_table['Start'] = start_ut
+        combined_table['End'] = end_ut
+        del combined_table['Start UT']
+        del combined_table['End UT']
+
+    display(combined_table[(combined_table['Observation'] == oid) & (combined_table['Visit'] == vid)])
+
+    return
+
+
 def summarize_status(result_table):
     """Print out how many visits in a program are Archived, Scheduled, etc.
     """
@@ -123,7 +183,7 @@ def wfsc_program_status(verbose=True):
 
 
     # Merged list of all targets, and all available status codes
-    target_list = list(np.concatenate([tables[pid]['Targets'] for pid in tables]))
+    target_list = list(np.concatenate([tables[pid]['Target(s)'] for pid in tables]))
 
     statcodes = ['Archived', 'Executed', 'Scheduled', 'Scheduling', 'Skipped', 'Withdrawn']
 
@@ -135,14 +195,14 @@ def wfsc_program_status(verbose=True):
     targ_summary_dict = { targ: {s:0 for s in statcodes} for targ in unique_targets}
     for table in tables.values():
         for i in range(len(table)):
-            targ = table.loc[i,'Targets']
+            targ = table.loc[i,'Target(s)']
             stat = table.loc[i,'Status']
             #print(targ, stat, targ_summary_dict[targ][stat])
             targ_summary_dict[targ][stat]+=1
 
     # Then extract from the nested dicts into an astropy table for convenience and better display
     data = [unique_targets] + [[targ_summary_dict[targ][s] for targ in unique_targets] for s in statcodes]
-    colnames = ['Target'] + statcodes
+    colnames = ['Target(s)'] + statcodes
     target_summary = astropy.table.Table(data=data, names=colnames)
 
     return target_summary
@@ -153,7 +213,7 @@ def plot_used_wfsc_targets(target_summary):
 
     used = 5 - target_summary['Scheduling'] - target_summary['Withdrawn']
 
-    radecs = [(f"{t[6:8]} {t[8:10]} {int(t[10:14])/100} {t[14:17]} {t[17:19]} {int(t[19:23])/200}") for t in target_summary['Target']]
+    radecs = [(f"{t[6:8]} {t[8:10]} {int(t[10:14])/100} {t[14:17]} {t[17:19]} {int(t[19:23])/200}") for t in target_summary['Target(s)']]
     coords = c.SkyCoord(radecs, unit=(u.hourangle, u.deg))
 
     plt.figure(figsize=(16,9))
