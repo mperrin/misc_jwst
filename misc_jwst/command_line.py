@@ -299,7 +299,7 @@ def jwstops_main():
     if args.program_status:
         jwstops_programstatus(args.program_status)
     if args.dsn:
-        dsn_schedule()
+        dsn_schedule(lookback=float(args.range)*u.hour)
 
     if args.guiding:
         jwstops_guiding(args.guiding)

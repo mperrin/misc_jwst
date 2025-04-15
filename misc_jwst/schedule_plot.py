@@ -116,7 +116,7 @@ def draw_dsn_box(row, axes):
 
     axes.fill_betweenx([0,1], row['BOT'].plot_date, row['EOT'].plot_date,
                      color=color, alpha=0.2, zorder=-5)
-    axes.text((row['BOT'].plot_date+row['EOT'].plot_date)/2, 0.8, loc, color=textcolor,
+    axes.text((row['BOT'].plot_date+row['EOT'].plot_date)/2, 0.8, f"{loc}\n{ant}", color=textcolor,
              horizontalalignment='center', fontsize='medium', clip_on=True)
 
 
@@ -126,7 +126,10 @@ def get_visit_info(schedule_row):
     long_mode = schedule_row['SCIENCE INSTRUMENT AND MODE']
     short_mode = _short_modes.get(str(long_mode), str(long_mode))
     targname = schedule_row['TARGET NAME'] if schedule_row['TARGET NAME'] else "N/A"
-    color = '0.7' if 'Dark' in long_mode else _colors[long_mode.split()[0]]
+    try:
+        color = '0.7' if 'Dark' in long_mode else _colors[long_mode.split()[0]]
+    except (KeyError, AttributeError):
+        color = '0.5'
     return long_mode, short_mode, targname, color
 
 
@@ -139,6 +142,7 @@ _colors = {'NIRCam':  'lightyellow',
            'MIRI': 'salmon',
            'FGS': 'lightgray',
            'Unknown': 'lightgray',
+           'Realtime': 'lightgray',
            'Station': 'purple'}
 
 
@@ -232,7 +236,7 @@ def schedule_plot(trange = 1*u.day, open_plot=True, verbose=True):
         nparallels = len(attached_parallels[row['VISIT ID']])
         if nparallels > 0:
             for i_parallel, (parallel_type, parallel_visit, parallel_index) in  enumerate(attached_parallels[row['VISIT ID']]):
-                pheight = 0.22 if nparallels < 3 else 0.15
+                pheight = 0.22 if nparallels < 3 else (0.15 if nparallels ==3 else 0.12)
                 poffset = 0 if nparallels < 3 else 0.04 
                 p_long_mode, p_mode, p_targ,  p_color = get_visit_info(schedule_full[parallel_index])
                 draw_box(row['start_time'], row['end_time'], 0.6 + i_parallel*(pheight) - poffset, pheight, ax=axes[0],
@@ -253,13 +257,13 @@ def schedule_plot(trange = 1*u.day, open_plot=True, verbose=True):
 
             sched_start_time = astropy.time.Time(schedrow['SCHEDULED START TIME'])
             delta_time = row['visit_fgs_start'] - sched_start_time
-            edgecolor = 'red' if 'SKIP' in row['notes'] else 'black'
+            edgecolor = 'red' if ('SKIP' in row['notes']) or ('failed' in row['notes']) or ('FAILED' in row['notes']) else 'black'
 
             if i==len(visit_table[in_time_range])-1:
                 #print(f"latest visit ΔT: {delta_time.to_value(u.hour):+.2f} hr")
-                axes[2].text(row['visit_fgs_start'].plot_date, -0.3, f"Latest visit ΔT:\n{delta_time.to_value(u.hour):+.2f} hr")
-                for ax in axes[0:2]:
-                    ax.axvline(row['visit_fgs_start'].plot_date, ls=':', color='0.5')
+                axes[2].text(row['visit_fgs_start'].plot_date, -0.3, f"Latest visit ΔT:\n{delta_time.to_value(u.hour):+.2f} hr", color='blue')
+                for ax in axes:
+                    ax.axvline(row['visit_fgs_start'].plot_date, ls=':', color='blue')
             
         except IndexError:
             # Handle case where there is no match in the schedule, e.g. due to an intercept, and the published schedule is not yet updated.
@@ -270,8 +274,12 @@ def schedule_plot(trange = 1*u.day, open_plot=True, verbose=True):
             notes = row['notes'].replace("Still ongoing at end of available log.", "") # This message isn't needed, so don't display
             notes = "\n".join(textwrap.wrap(notes, width=25))
             targname += "\n" + notes
+        try:
+            color = _colors[long_mode.split()[0]]
+        except (KeyError, AttributeError):
+            color = '0.5'
         draw_box(row['visit_fgs_start'], row['visitend'], 0.25, 0.4, ax=axes[1],
-                color = _colors[long_mode.split()[0]], edgecolor=edgecolor,
+                color = color, edgecolor=edgecolor,
                 text = mode + "\n" + row['VISIT ID'] + "\n" + targname, fontsize='x-small',
                 text_offset = text_offsets.get(row['VISIT ID'], 0), time_range_start=tstart, time_range_end=tend)
 

@@ -260,7 +260,7 @@ def dsn_schedule(return_table=False, verbose=True, lookback=0.5*u.day):
     now = astropy.time.Time.now()
     tstart, tend = astropy.time.Time(np.floor(now.mjd), format='mjd'), astropy.time.Time(np.ceil(now.mjd), format='mjd')
     tstart -= lookback
-    todays_dsn = (dsn_table['BOT'] > tstart) & (dsn_table['EOT'] < (tend+12*u.hour))
+    todays_dsn = (dsn_table['BOT'] > tstart) & (dsn_table['EOT'] < (tend + lookback))
 
     # now some timezone math
     tz = pytz.timezone('US/Eastern')

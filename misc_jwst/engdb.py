@@ -118,6 +118,8 @@ def _check_log_and_note_issues(msg, prior_note=None):
         note = "SKIPPED. FGS ID failed all attempts"
     elif 'FGS guide star reacquisition failed' in msg:
         note = 'FAILED part way through: FGS guide star reacquisition failed.'
+    elif 'FGS loss of ACS Fine Guidance Control, exit FGSGUIDEHEALTH' in msg:
+        note = 'FAILED part way through: FGS los of ACS fine guide control'
     elif 'MIRI target locate failed' in msg:
         note = 'MIRI target acq failed'
     elif 'NIRCam target locate failed' in msg or 'NRC target locate failed' in msg:
