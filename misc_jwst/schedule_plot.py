@@ -146,11 +146,18 @@ _colors = {'NIRCam':  'lightyellow',
            'Station': 'purple'}
 
 
-def schedule_plot(trange = 1*u.day, open_plot=True, verbose=True):
+def schedule_plot(trange = 1*u.day, open_plot=True, verbose=True, future=False):
     now = astropy.time.Time.now()
     # start and end times for the plot
-    tstart = now - trange
-    tend = now + 0.5*trange
+    if future:
+        # show mostly the future
+        tstart = now - 0.5*trange
+        tend = now + trange
+
+    else:
+        # show mostly the past
+        tstart = now - trange
+        tend = now + 0.5*trange
     # start time for retriving info should be well before start time for plot, to get any ongoing visits at that time.
     start_time = now - trange * 2
 
@@ -236,8 +243,8 @@ def schedule_plot(trange = 1*u.day, open_plot=True, verbose=True):
         nparallels = len(attached_parallels[row['VISIT ID']])
         if nparallels > 0:
             for i_parallel, (parallel_type, parallel_visit, parallel_index) in  enumerate(attached_parallels[row['VISIT ID']]):
-                pheight = 0.22 if nparallels < 3 else (0.15 if nparallels ==3 else 0.12)
-                poffset = 0 if nparallels < 3 else 0.04 
+                pheight = 0.22 if nparallels < 3 else (0.15 if nparallels ==3 else 0.5/nparallels)
+                poffset = 0 if nparallels < 3 else 0.04  if nparallels ==3 else 0.1
                 p_long_mode, p_mode, p_targ,  p_color = get_visit_info(schedule_full[parallel_index])
                 draw_box(row['start_time'], row['end_time'], 0.6 + i_parallel*(pheight) - poffset, pheight, ax=axes[0],
                         color = p_color,
@@ -284,14 +291,14 @@ def schedule_plot(trange = 1*u.day, open_plot=True, verbose=True):
                 text_offset = text_offsets.get(row['VISIT ID'], 0), time_range_start=tstart, time_range_end=tend)
 
         if (nparallels := len(attached_parallels[row['VISIT ID']])) > 0:
-            pheight = 0.22 if nparallels < 3 else 0.15
-            poffset = 0 if nparallels < 3 else 0.04 
+            pheight = 0.22 if nparallels < 3 else (0.15 if nparallels ==3 else 0.5/nparallels)
+            poffset = 0 if nparallels < 3 else 0.04  if nparallels ==3 else 0.1
             for i_parallel, (parallel_type, parallel_visit, parallel_index) in  enumerate(attached_parallels[row['VISIT ID']]):
                 p_long_mode, p_mode, p_targ,  p_color = get_visit_info(schedule_full[parallel_index])
                 draw_box(row['visit_fgs_start'], row['visitend'], 0.6 + i_parallel*pheight - poffset, pheight, ax=axes[1],
                         color = p_color,
                         text = p_mode + "\n" + parallel_visit,
-                        text_offset = text_offsets[row['VISIT ID']], time_range_start=tstart, time_range_end=tend)
+                        text_offset = text_offsets.get(row['VISIT ID'],0), time_range_start=tstart, time_range_end=tend)
 
 
     axes[1].fill_between([latest_log_time.plot_date, tend.plot_date], 0, 1, color='0.95', zorder=-10)

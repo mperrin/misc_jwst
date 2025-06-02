@@ -41,6 +41,8 @@ def get_mnemonic(mnemonic, startdate='2022-02-01', enddate=None, mast_api_token=
     # Handle dates as astropy.Time, datetime, or strings
     if isinstance(startdate, astropy.time.Time):
         start = startdate
+    elif startdate is None:
+        raise ValueError("Start date should not be None when calling get_mnemonic")
     else:
         start = datetime.fromisoformat(f'{startdate}+00:00')
 
@@ -119,11 +121,15 @@ def _check_log_and_note_issues(msg, prior_note=None):
     elif 'FGS guide star reacquisition failed' in msg:
         note = 'FAILED part way through: FGS guide star reacquisition failed.'
     elif 'FGS loss of ACS Fine Guidance Control, exit FGSGUIDEHEALTH' in msg:
-        note = 'FAILED part way through: FGS los of ACS fine guide control'
+        note = 'FAILED part way through: FGS loss of ACS fine guide control'
+    elif 'FGS MT guide star acquisition process unsuccessful' in msg:
+        note = 'FAILED guide star acquisition for moving target'
     elif 'MIRI target locate failed' in msg:
         note = 'MIRI target acq failed'
     elif 'NIRCam target locate failed' in msg or 'NRC target locate failed' in msg:
         note = 'NIRCam target acq failed'
+    elif 'NIRSpec TA Roll too big' in msg:
+        note = "NIRSpec MSATA failed; roll too big"
     elif 'subsystem unavailable' in msg:  # This checks for like 'NRC subsystem unavailable'
         note = msg.split(',')[0]
     elif 'Visit constraint violation' in msg:  # This may follow a subsystem unavailable

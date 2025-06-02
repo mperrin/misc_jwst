@@ -99,7 +99,10 @@ def aladin_setup_plot(datafile, survey="P/2MASS/color", height=800, fov=0.5):
 
     with jwst.datamodels.open(datafile) as model:
         # Get target location
-        target = SkyCoord(model.meta.target.ra, model.meta.target.dec, frame='icrs', unit='deg')
+        if model.meta.exposure.type.startswith('FGS'):
+            target = SkyCoord(model.meta.guidestar.gs_ra, model.meta.guidestar.gs_dec, frame='icrs', unit='deg')
+        else:
+            target = SkyCoord(model.meta.target.ra, model.meta.target.dec, frame='icrs', unit='deg')
 
     # Create an aladin instance centered there.
     aladin = ipyaladin.Aladin(height=height, fov=fov, survey=survey, target=target.to_string())
@@ -110,15 +113,69 @@ def aladin_annotate_data_and_apertures(aladin, datafile):
 
     Use on an aladin instance you already created. See aladin_setup_plot()
     """
-    # Plot datafile
-    aladin.add_fits(datafile)
-
     with jwst.datamodels.open(datafile) as model:
         # Get attitude matrix for the observatory orientation during that exposure
         ra_v1  = model.meta.pointing.ra_v1
         dec_v1 = model.meta.pointing.dec_v1
         pa_v3  = model.meta.pointing.pa_v3
-        attmat = pysiaf.utils.rotations.attitude(0, 0, ra_v1, dec_v1, pa_v3)
+        if ra_v1 is not None:
+            # The usual case with good pointing metadata. We can use this straightforwardly to get the attitude matrix
+            attmat = pysiaf.utils.rotations.attitude(0, 0, ra_v1, dec_v1, pa_v3)
+
+            # Plot datafile
+            aladin.add_fits(datafile)
+        else:
+            # handle the case of guider ID images, for which we don't have those keywords
+            # and there are missing values in the header metadata.
+
+            ra_gs  = model.meta.guidestar.gs_ra
+            dec_gs = model.meta.guidestar.gs_dec
+            pa_gs  = model.meta.guidestar.gs_v3_pa_science
+
+            # use reference star information from planned guide star table to infer the attitude matrix.
+            # This works around the invalid or not properly initialized WCS present in the guide star ID files
+            for i in range(len(model.planned_star_table)):
+                if model.planned_star_table[i]['guide_star_order'] == model.meta.guidestar.gs_order:
+                    row = model.planned_star_table[i]
+
+            aper = pysiaf.Siaf('FGS').apertures[model.meta.aperture.name+"_OSS"]  # Yes, use the OSS version of the aperture here
+            ref_v2, ref_v3 = aper.idl_to_tel(row['id_x'], row['id_y'])
+            attmat = pysiaf.utils.rotations.attitude(ref_v2, ref_v3, row['ra'], row['dec'], pa_gs)
+
+            # Special case, continued. The WCS in the guider ID images is not valid, so let's fix it. 
+            print(f"Caution, FGS images currently have incomplete WCS. Attempting to fix position angle to {pa_gs}...")
+            import astropy.wcs, astropy.io.fits as fits
+            datafile_hdul = fits.open(datafile)
+            # Create a WCS object
+            wcs = astropy.wcs.WCS(datafile_hdul['SCI'])
+            angle_rad = np.deg2rad(-pa_gs)
+            rotation_matrix = np.array([
+                [np.cos(angle_rad), -np.sin(angle_rad)],
+                [np.sin(angle_rad), np.cos(angle_rad)]
+            ])
+            rotated_pc = np.dot(rotation_matrix, wcs.celestial.wcs.pc)  # need the .celestial to work around the awkwardness of the len 1 NAXIS3
+            #print('PC', wcs.celestial.wcs.pc)
+            #print('rotated', rotated_pc)
+            datafile_hdul['SCI'].header['PC1_1'] = rotated_pc[0,0]
+            datafile_hdul['SCI'].header['PC1_2'] = rotated_pc[0,1]
+            datafile_hdul['SCI'].header['PC2_1'] = rotated_pc[1,0]
+            datafile_hdul['SCI'].header['PC2_2'] = rotated_pc[1,1]
+
+            aper_sci = pysiaf.Siaf('FGS').apertures[model.meta.aperture.name]  # Do NOT use the OSS version of the aperture here
+            aper_sci.set_attitude_matrix(attmat)
+            xpix, ypix = aper_sci.sky_to_sci(ra_gs, dec_gs)
+            datafile_hdul['SCI'].header['CRPIX1'] = xpix
+            datafile_hdul['SCI'].header['CRPIX2'] = ypix
+            datafile_hdul['SCI'].header['CRVAL1'] = ra_gs
+            datafile_hdul['SCI'].header['CRVAL2'] = dec_gs
+
+            print(xpix, ypix)
+
+            # Plot the version with the fixed WCS
+            aladin.add_fits(datafile_hdul)
+
+            # Reset the target marker in aladin to show the guide star
+            aladin.target = SkyCoord(model.meta.guidestar.gs_ra, model.meta.guidestar.gs_dec, frame='icrs', unit='deg')
 
     # Get apertures
     aps_imaging, aps_spectra, aps_coron = pysiaf.siaf.get_main_apertures()
