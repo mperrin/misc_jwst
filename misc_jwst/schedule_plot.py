@@ -264,7 +264,7 @@ def schedule_plot(trange = 1*u.day, open_plot=True, verbose=True, future=False):
 
             sched_start_time = astropy.time.Time(schedrow['SCHEDULED START TIME'])
             delta_time = row['visit_fgs_start'] - sched_start_time
-            edgecolor = 'red' if ('SKIP' in row['notes']) or ('failed' in row['notes']) or ('FAILED' in row['notes']) else 'black'
+            edgecolor = 'red' if ('SKIP' in row['notes']) or ('failed' in row['notes']) or ('FAILED' in row['notes'])  or ('unavailable' in row['notes']) else 'black'
 
             if i==len(visit_table[in_time_range])-1:
                 #print(f"latest visit ΔT: {delta_time.to_value(u.hour):+.2f} hr")

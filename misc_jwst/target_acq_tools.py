@@ -567,7 +567,7 @@ def nrc_ta_analysis(visitid, inst='NIRCam', verbose=True,  plot=True, return_wcs
 
                 if inst.upper() == "NIRISS":
                     if verbose:
-                        print("transposing X & Y")
+                        print("transposing X & Y, due to NIRISS detector coordinate frame")
                     oss_cen = oss_cen[::-1]
 
                 # Convert from full-frame (as used by OSS) to detector subarray coords:

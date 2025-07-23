@@ -1207,7 +1207,9 @@ def which_guider_used(visitid, guidemode = 'FINEGUIDE'):
         visit ID, like "V01234004001"
     guidemode : str
         Which kind of guide mode to check. Defaults to FINEGUIDE but
-        would need to be TRACK for moving targets
+        would need to be TRACK for moving targets.
+        If FINEGUIDE is specified and no guide files are found, the
+        code will now automatically retry using TRACK instead.
 
     """
     visitid = misc_jwst.utils.get_visitid(visitid)  # handle either input format, VPPPPPOOOVVV or PPPP:O:V
@@ -1239,6 +1241,10 @@ def which_guider_used(visitid, guidemode = 'FINEGUIDE'):
         guider_used = t['apername'][0][0:4]
     else:
         guider_used = None
+
+    if guider_used is None and guidemode=='FINEGUIDE':
+        # if we can't find any FG, then fail back and try TRACK automatically in case this was a moving target visit
+        guider_used = which_guider_used(visitid, guidemode='TRACK')
     return guider_used
 
 def visit_guiding_timeline(visitid):
