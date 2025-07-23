@@ -127,7 +127,7 @@ def get_visit_info(schedule_row):
     short_mode = _short_modes.get(str(long_mode), str(long_mode))
     targname = schedule_row['TARGET NAME'] if schedule_row['TARGET NAME'] else "N/A"
     try:
-        color = '0.7' if 'Dark' in long_mode else _colors[long_mode.split()[0]]
+        color = '0.3' if 'Dark' in long_mode else _colors[long_mode.split()[0]]
     except (KeyError, AttributeError):
         color = '0.5'
     return long_mode, short_mode, targname, color
@@ -268,7 +268,7 @@ def schedule_plot(trange = 1*u.day, open_plot=True, verbose=True, future=False):
 
             if i==len(visit_table[in_time_range])-1:
                 #print(f"latest visit ΔT: {delta_time.to_value(u.hour):+.2f} hr")
-                axes[2].text(row['visit_fgs_start'].plot_date, -0.3, f"Latest visit ΔT:\n{delta_time.to_value(u.hour):+.2f} hr", color='blue')
+                axes[1].text(row['visit_fgs_start'].plot_date, 0.85, f"  Latest visit ΔT:\n  {delta_time.to_value(u.hour):+.2f} hr", color='blue')
                 for ax in axes:
                     ax.axvline(row['visit_fgs_start'].plot_date, ls=':', color='blue')
             
@@ -282,7 +282,7 @@ def schedule_plot(trange = 1*u.day, open_plot=True, verbose=True, future=False):
             notes = "\n".join(textwrap.wrap(notes, width=25))
             targname += "\n" + notes
         try:
-            color = _colors[long_mode.split()[0]]
+            color = '0.3' if 'Dark' in long_mode else _colors[long_mode.split()[0]]
         except (KeyError, AttributeError):
             color = '0.5'
         draw_box(row['visit_fgs_start'], row['visitend'], 0.25, 0.4, ax=axes[1],
