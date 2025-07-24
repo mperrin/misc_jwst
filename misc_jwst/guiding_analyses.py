@@ -1565,3 +1565,36 @@ def visit_guiding_sequence(visitid, verbose=True, include_performance=True):
             # pdf.savefig(plt.gcf())
 
     print("Output to " + outname)
+
+
+def retrieve_visit_dither_sams(visitid):
+    """ Retrieve a table of dither SAMs in a given visit
+
+    Parameters
+    ----------
+    visitid : str
+        Visit ID, like 'V01234005006' or '1234:5:6'
+
+    Returns astropy Table with fields TIME, SAM_DX, SAM_DY.
+    The SAMs are given in units of arcseconds, specified in the FGSx_FULL_OSS frame for
+    whichever guider was used in that visit. Call which_guider_used() to check that if needed.
+    """
+    MSGID_DITHER_SAM = 8232
+
+    msg_table = misc_jwst.engdb.get_oss_log_messages(visitid)
+    msg_table_sams = misc_jwst.engdb.filter_oss_log_messages_by_id(msg_table, MSGID_DITHER_SAM)
+
+    def get_sam_xy(message):
+        """ Given an OSS log message like 'TA SAM = 1.234, 5.679' extract the 2 numeric values as floats
+
+        Returns a tuple with the x, y values
+        """
+        # take the last 2 entries in the line. Strip any punctuation in 'x, y' or '(x, y)'. Cast to floats
+        return tuple( [float(m.strip(',()')) for m in message.split()[-2:] ])
+
+    sams = np.asarray([get_sam_xy(row['EVENT_MSG']) for row in msg_table_sams])
+
+    sam_table = Table([msg_table_sams['TIME'], sams.transpose()[0]*astropy.units.arcsec, sams.transpose()[1]*astropy.units.arcsec],
+                      names = ['TIME', 'SAM_DX', 'SAM_DY'])
+
+    return sam_table

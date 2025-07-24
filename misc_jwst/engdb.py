@@ -103,6 +103,85 @@ def get_ictm_event_log(startdate='2022-02-01', enddate=None, mast_api_token=None
     else:
         return lines
 
+#----- Newer/updated version of OSS log message retrieval,
+#      using the pipeline interface and retrieving additional fields
+
+@functools.lru_cache
+def get_oss_log_messages(visitid):
+    """ Retrieve OSS event log messages during a given visit
+
+    See also get_ictm_event_log. This function instead uses the EngDB interface included in the JWST pipeline.
+    Returns an astropy Table with the EngDB message, message ID, and message source.
+
+    Parameters
+    ----------
+    visitid : str
+        Visit ID string, like 'V01234001001'
+
+    Returns astropy Table containing the timestamps and message values
+    """
+    visitid = misc_jwst.utils.get_visitid(visitid)  # Handle either allowed format of visit ID
+
+    #----- When was that visit? -----
+    start_time, end_time = misc_jwst.mast.query_visit_time(visitid)
+    if start_time is None:
+        raise RuntimeError(f"Cannot find start time for visit {visitid}. That visit may not have happened yet.")
+
+    #----- Retrieve relevant messages from the ICTM event log stream -----
+    from jwst.lib.engdb_tools import ENGDB_Service
+    service = ENGDB_Service()  # By default, will use the public MAST service.
+
+    # There are multiple mnemonics we care about, 
+    # in particular the EVENT_MSG has the text, and the MSG_ID and MSG_SRC give metadata on the source
+    # Retrieve all of these and organize into a table for convenience.
+
+    msg_times, messages = service.get_values("ICTM_EVENT_MSG", start_time.isot, end_time.isot, include_obstime=True, zip_results=False)
+    msg_times_2, msg_ids = service.get_values("ICTM_EVENT_MSG_ID", start_time.isot, end_time.isot, include_obstime=True, zip_results=False)
+    msg_times_3, msg_srcs = service.get_values("ICTM_EVENT_MSG_SRC", start_time.isot, end_time.isot, include_obstime=True, zip_results=False)
+
+    #----- Arrange those 3 sets of results into a single Table -----
+    # Ideally we should have gotten the same number of rows in all 3 queries above\
+    # These -should- all have matching counts and time stamps... but for some reason this is not always the case. Hmm.
+    # So check here and if necessary handle the case of an inconsistency. 
+
+    if len(messages) == len(msg_ids) and len(messages) == len(msg_srcs):
+        #print("consistent number of rows returned")
+        msg_table = astropy.table.Table([msg_times, messages, msg_ids, msg_srcs],
+                                       names = ['TIME', "EVENT_MSG", "EVENT_MSG_ID", "EVENT_MSG_SRC"])
+    else:
+        print("INconsistent number of EVENT_MSG and EVENT_MSG_ID records returned. ")
+        # This occurs for instance in visit V07344017001, a NIRCam WFSC visit.
+        #raise NotImplementedError("need to write additional case handling")
+
+        # for now, let's just match up the rows that do have consistent timestamps, and hope that includes the relevant TA messages...
+        # It is unclear if this will suffice in all cases. TBC. 
+        n = max(len(msg_times), len(msg_times_2), len(msg_times_3))
+        for i in range(n):
+            if (msg_times[i] != msg_times_2[i]) or (msg_times[i] != msg_times_3[i]):
+                break
+        print(f"Only considering first {i-1} messages out of {len(messages)} or {len(msg_ids)}")
+        msg_table = astropy.table.Table([msg_times[:i-1], messages[:i-1], msg_ids[:i-1], msg_srcs[:i-1]],
+                                   names = ['TIME', "EVENT_MSG", "EVENT_MSG_ID", "EVENT_MSG_SRC"])
+
+    return msg_table
+
+
+def filter_oss_log_messages_by_id(msg_table, msg_id):
+    """Select a subset of event log messages matching a specified EVENT_MSG_ID
+
+    Parameters
+    ----------
+    msg_table : astropy.Table
+        table returned from get_oss_log_messages()
+    msg_id : int
+        Value to select from the EVENT_MSG_ID field in that table.
+
+    Returns a subset of rows from the event message table
+    """
+    return msg_table[msg_table['EVENT_MSG_ID'] == msg_id]
+
+
+#-------
 
 def pretty_print_event_log(eventlog):
     # Only works on eventtable as list; unnecessary for Table format
