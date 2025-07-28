@@ -859,7 +859,7 @@ def display_one_id_image(filename, destripe = True, smooth=True, ax=None,
         ax = plt.gca()
 
     if destripe:
-        im = im - np.median(im, axis=0).reshape([1, im.shape[1]])
+        im = im - np.nanmedian(im, axis=0).reshape([1, im.shape[1]])
 
     if smooth:
         im = scipy.ndimage.median_filter(im, size=3)
