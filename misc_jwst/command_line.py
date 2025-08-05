@@ -132,25 +132,30 @@ def jwstops_visitlog(visitid, lookback=7*u.day, visit_date=None):
 
     else:
         # First, try within the prior week
-        try:
-            now = astropy.time.Time.now()
-            start_time = now - lookback
+#        try:
+#            now = astropy.time.Time.now()
+#            start_time = now - lookback
+#
+#            log = engdb.get_ictm_event_log(startdate=start_time)
+#            visit_table = engdb.eventtable_extract_visit(log, visitid, verbose=False)
+#
+#        except RuntimeError: # If we can't find a log in this week, look back further
+#            from . import mast
+#            start_time, end_time = mast.query_visit_time(visitid)
+#
+#            if start_time is None:
+#                raise RuntimeError(f"Could not find a start_time for visit {visitid} based on MAST. You may need to manually specify '--visit_date YYYY-MM-DD' to override.")
+#
+#            log = engdb.get_ictm_event_log(startdate=start_time, enddate=end_time)
+#            visit_table = engdb.eventtable_extract_visit(log, visitid, verbose=False)
+#
+       visit_table = engdb.get_oss_log_messages(visitid)
 
-            log = engdb.get_ictm_event_log(startdate=start_time)
-            visit_table = engdb.eventtable_extract_visit(log, visitid, verbose=False)
-
-        except RuntimeError: # If we can't find a log in this week, look back further
-            from . import mast
-            start_time, end_time = mast.query_visit_time(visitid)
-
-            if start_time is None:
-                raise RuntimeError(f"Could not find a start_time for visit {visitid} based on MAST. You may need to manually specify '--visit_date YYYY-MM-DD' to override.")
-
-            log = engdb.get_ictm_event_log(startdate=start_time, enddate=end_time)
-            visit_table = engdb.eventtable_extract_visit(log, visitid, verbose=False)
-
+    # visitt table will have columns:
+    #  'TIME', "EVENT_MSG", "EVENT_MSG_ID", "EVENT_MSG_SRC"
     for row in visit_table:
-        print(row['Time'][:-4], '\t', row['Message'])
+        print(f"{row['TIME']}  {row['EVENT_MSG_SRC']:4s} {row['EVENT_MSG_ID']:4d}    {row['EVENT_MSG']}")
+ 
 
 
 def jwstops_programstatus(program):
@@ -183,6 +188,13 @@ def jwstops_guiding_performance(visitid):
     visitid = misc_jwst.utils.get_visitid(visitid)  # handle either input format
     misc_jwst.guiding_analyses.guiding_performance_plot(visitid=visitid, save=True)
     misc_jwst.guiding_analyses.guiding_performance_jitterball(visitid=visitid, save=True)
+
+
+def jwstops_target_acq_performance(visitid):
+    import misc_jwst.target_acq_tools
+    visitid = misc_jwst.utils.get_visitid(visitid)  # handle either input format
+    misc_jwst.target_acq_tools.auto_ta_results_analysis(visitid=visitid)
+
 
 
 def jwstops_durations(visitid, lookback=7*u.day):
@@ -301,6 +313,7 @@ def jwstops_main():
     parser.add_argument('-g', '--guiding',  help='retrieve and plot guiding ID/ACQ/Track images for this visit (within previous week).')
     parser.add_argument('-G', '--guiding_timeline',  help='retrieve log timeline of guiding events and images for this visit.')
     parser.add_argument('--guiding_performance',  help='plot guiding performance for this visit.')
+    parser.add_argument('--ta',  help='analyze target acquisition for this visit.')
     parser.add_argument('-d', '--durations',  help='retrieve OSS visit event durations for this visit (within previous week).')
     parser.add_argument('-r', '--range',  default=48.0, help='Set time range in hours forward/back for displaying schedules. (default = 48 hours)')
     parser.add_argument('-f', '--future',  action='store_true', help='Shift time range for displaying schedule plots to bias toward the future. (Default = show 1*range into the past, 0.5*range into the future. This option flips those coefficients.)')
@@ -325,6 +338,9 @@ def jwstops_main():
         jwstops_guiding_timeline(args.guiding_timeline)
     if args.guiding_performance:
         jwstops_guiding_performance(args.guiding_performance)
+
+    if args.ta:
+        jwstops_target_acq_performance(args.ta)
 
 
     if args.durations:

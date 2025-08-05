@@ -38,6 +38,14 @@ def jwst_keywords_query(instrument, columns=None, all_columns=False, verbose=Fal
     For more examples of using this API, see also:
       https://spacetelescope.github.io/mast_notebooks/notebooks/JWST/SI_keyword_exoplanet_search/SI_keyword_exoplanet_search.html
 
+    Parameters
+    ----------
+    instrument : str
+        Instrument name like "NIRCam" or "MIRI"
+    columns : str
+        single string with comma-separated list of columns to include in the query, like "filename, program, observtn, apername"
+
+
     Query Syntax Guide
     ------------------
     To set a SET of values, set some parameter to a list
@@ -138,9 +146,11 @@ def visit_which_instrument(visitid):
 def query_visit_time(visitid, verbose=False):
     """ Find start and end time of a visit
 
-    Input: string visit id, like 'V01234005001'
+    Input: string visit id, like 'V01234005001' or '1234:5:1'
     Returns start and end time as astropy.time.Time instances, or Nones.
     """
+
+    visitid = misc_jwst.utils.get_visitid(visitid)  # Handle either allowed format of visit ID
 
     # Get table of times for all visits in that program
     program = visitid[1:6]

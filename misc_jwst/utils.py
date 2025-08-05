@@ -5,6 +5,7 @@ import jwst.datamodels
 def get_visitid(visitstr):
     """ Common util function to handle several various kinds of visit specification"""
     if visitstr.startswith("V"):
+        # Full visit ID like V04503031001
         return visitstr
     elif ':' in visitstr:
         # This is PPS format visit ID, like 4503:31:1
@@ -13,6 +14,10 @@ def get_visitid(visitstr):
             # if given only like 4503:31, assume the visit number is 1
             parts.append(1)
         return f"V{parts[0]:05d}{parts[1]:03d}{parts[2]:03d}"
+    elif len(visitstr) == 11:
+        # Full visit ID but without the leading V, like 04503031001
+        return 'V'+visitstr
+
 
 
 def colormap_viridis_white_background():

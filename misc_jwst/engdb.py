@@ -107,8 +107,8 @@ def get_ictm_event_log(startdate='2022-02-01', enddate=None, mast_api_token=None
 #      using the pipeline interface and retrieving additional fields
 
 @functools.lru_cache
-def get_oss_log_messages(visitid):
-    """ Retrieve OSS event log messages during a given visit
+def get_oss_log_messages(visitid=None, start_time=None, end_time=None):
+    """ Retrieve OSS event log messages during a given visit or time interval
 
     See also get_ictm_event_log. This function instead uses the EngDB interface included in the JWST pipeline.
     Returns an astropy Table with the EngDB message, message ID, and message source.
@@ -120,12 +120,16 @@ def get_oss_log_messages(visitid):
 
     Returns astropy Table containing the timestamps and message values
     """
-    visitid = misc_jwst.utils.get_visitid(visitid)  # Handle either allowed format of visit ID
+    if start_time is None and end_time is None:
+        visitid = misc_jwst.utils.get_visitid(visitid)  # Handle either allowed format of visit ID
 
-    #----- When was that visit? -----
-    start_time, end_time = misc_jwst.mast.query_visit_time(visitid)
-    if start_time is None:
-        raise RuntimeError(f"Cannot find start time for visit {visitid}. That visit may not have happened yet.")
+        #----- When was that visit? -----
+        start_time, end_time = misc_jwst.mast.query_visit_time(visitid)
+        if start_time is None:
+            raise RuntimeError(f"Cannot find start time for visit {visitid}. That visit may not have happened yet.")
+    else:
+        start_time = astropy.time.Time(start_time)
+        end_time = astropy.time.Time(end_time)
 
     #----- Retrieve relevant messages from the ICTM event log stream -----
     from jwst.lib.engdb_tools import ENGDB_Service
@@ -263,9 +267,13 @@ def visit_start_end_times(eventlog, visitid=None, return_table=False, verbose=Tr
                 #print("**", value)
                 in_visit = True
                 note = ""
-            elif msg[-5:] == 'ENDED' and vid!='':
+            elif ((msg[-5:] == 'ENDED' and vid!='')  # Normal visit end log message
+                  or (msg[-28:] == 'ENDED, EXCEEDED ALLOWED TIME' and vid!='')):
                 if vid != msg.split()[1]:
                     output.append(f"Unexpected end for visit {msg} instead of {vid}")
+                if msg.endswith('ENDED, EXCEEDED ALLOWED TIME'):
+                    output.append("Visit TERMINATED; Exceeded allowed time.")
+                    note += "ERROR: Terminated by OSS; Exceeded allowed time."
                 vend = 'T'.join(time.split())[:-3]
                 dur = datetime.fromisoformat(vend) - datetime.fromisoformat(vstart)
                 output.append(f'{vid} | {vstart:23} | {vend:23} | '
@@ -279,6 +287,24 @@ def visit_start_end_times(eventlog, visitid=None, return_table=False, verbose=Tr
                 outputs['notes'].append(note)
 
                 in_visit = False
+            elif msg.endswith('SKIPPED'):  # Visit latest allowed start time has passed, so it gets skipped.
+                # Still include this in the table, but with start and end time exactly the same
+                vstart = 'T'.join(time.split())[:-3]
+                vend = vstart
+                vid = msg.split()[1]
+                vid_fgs_start = None
+                current_visit_parallels = []
+                note = msg[21:]+"."  # drop 'VISIT V01234005006 -' from the start, keep the rest
+                dur = datetime.fromisoformat(vend) - datetime.fromisoformat(vstart)
+                output.append(f'{vid} | {vstart:23} | {vend:23} | '
+                      f' {round(dur.total_seconds()):6}  | {note}')
+                outputs['visitid'].append(vid)
+                outputs['visitstart'].append(vstart)
+                outputs['visit_fgs_start'].append(str(vid_fgs_start))
+                outputs['visitend'].append(vend)
+                outputs['duration'].append(dur.total_seconds())
+                outputs['parallels'].append(current_visit_parallels)
+                outputs['notes'].append(note)
         elif msg[:31] == f'Script terminated: {vid}':
             if msg[-5:] == 'ERROR':
                 script = msg.split(':')[2]
