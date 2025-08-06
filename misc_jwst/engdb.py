@@ -160,12 +160,22 @@ def get_oss_log_messages(visitid=None, start_time=None, end_time=None):
         # for now, let's just match up the rows that do have consistent timestamps, and hope that includes the relevant TA messages...
         # It is unclear if this will suffice in all cases. TBC. 
         n = max(len(msg_times), len(msg_times_2), len(msg_times_3))
+
+        # TODO enhance logic here
+        # for each row in messages
+        #    check if timestamp matches in the other streams
+        #    if so, add to table
+        #    if not, increment an offset counter and check for match again
+
         for i in range(n):
             if (msg_times[i] != msg_times_2[i]) or (msg_times[i] != msg_times_3[i]):
                 break
         print(f"Only considering first {i-1} messages out of {len(messages)} or {len(msg_ids)}")
         msg_table = astropy.table.Table([msg_times[:i-1], messages[:i-1], msg_ids[:i-1], msg_srcs[:i-1]],
                                    names = ['TIME', "EVENT_MSG", "EVENT_MSG_ID", "EVENT_MSG_SRC"])
+        # Add the rest in, without bothering to match up MSG_ID or MSG_SRC yet
+        for j in range(i,n):
+            msg_table.add_row({'TIME': msg_times[j], "EVENT_MSG": messages[j]})
 
     return msg_table
 
