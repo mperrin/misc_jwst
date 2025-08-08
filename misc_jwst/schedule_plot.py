@@ -196,6 +196,8 @@ def schedule_plot(trange = 1*u.day, open_plot=True, verbose=True, future=False):
 
     # Make lookup table of parallel visits from the schedule
     attached_parallels = collections.defaultdict(lambda : [])
+
+    prior_prime_visit = None  # Keep track of the previous one, for use with slew parallels in particular
     for i, row in enumerate(schedule_full):
         if 'PRIME' in row['VISIT TYPE']:
             prime_visit = row['VISIT ID']
@@ -204,6 +206,8 @@ def schedule_plot(trange = 1*u.day, open_plot=True, verbose=True, future=False):
             attached_parallels[prime_visit].append(('coordinated', prime_visit, i)) # parallel type, attached parallel visit id, and index into this table
         elif row['VISIT TYPE'] == "PARALLEL PURE":
             attached_parallels[prime_visit].append(('pure', row['VISIT ID'], i))  # parallel type, attached parallel visit id, and index into this table
+        elif row['VISIT TYPE'] == "PARALLEL SLEW CALIBRATION":
+            attached_parallels[prime_visit].append(('slew', row['VISIT ID'], i))  # parallel type, attached parallel visit id, and index into this table
         else:
             # There can be extra rows with no visit type; these list extra targets, e.g. TA ref stars, for certain NIRSpec visits.
             # We can ignore these.
@@ -231,6 +235,7 @@ def schedule_plot(trange = 1*u.day, open_plot=True, verbose=True, future=False):
     in_time_range = (((tstart < schedule['start_time']) & (schedule['start_time'] < tend) ) |
                      ((tstart < schedule['end_time']) & (schedule['end_time'] < tend) ) )
     text_offsets = {}
+    prev_visit_end_time = now - trange  # placeholder; this variable will be used for slew parallels display only
     for i, row in enumerate(schedule[in_time_range]):
         long_mode, mode, targname, color = get_visit_info(row)
         text_offsets[row['VISIT ID']] = np.mod(i,3)  # save same offsets to reuse below for consistency
@@ -246,16 +251,28 @@ def schedule_plot(trange = 1*u.day, open_plot=True, verbose=True, future=False):
                 pheight = 0.22 if nparallels < 3 else (0.15 if nparallels ==3 else 0.5/nparallels)
                 poffset = 0 if nparallels < 3 else 0.04  if nparallels ==3 else 0.1
                 p_long_mode, p_mode, p_targ,  p_color = get_visit_info(schedule_full[parallel_index])
-                draw_box(row['start_time'], row['end_time'], 0.6 + i_parallel*(pheight) - poffset, pheight, ax=axes[0],
+
+                if parallel_type == 'slew':
+                    pstart, pend = prev_visit_end_time, row['start_time']
+                else:
+                    pstart, pend = row['start_time'], row['end_time']
+
+
+                draw_box(pstart, pend, 0.6 + i_parallel*(pheight) - poffset, pheight, ax=axes[0],
                         color = p_color,
                         text = p_mode + "\n" + parallel_visit,
                         text_offset = text_offsets[row['VISIT ID']], time_range_start=tstart, time_range_end=tend)
+
+        prev_visit_end_time = row['end_time']
+
+
 
     ###---------------------------------------------------------------
     ### Draw boxes for the actual visits
 
     in_time_range = (((tstart < visit_table['visitstart']) & (visit_table['visitstart'] < tend) ) |
                      ((tstart < visit_table['visitend']) & (visit_table['visitend'] < tend) ) )
+    prev_visit_end_time = now - trange  # similar to above, will be used for slew parallels display
     for i, row in enumerate(visit_table[in_time_range]):
         try:
             match_index = np.where(schedule['VISIT ID'] == row['VISIT ID'])[0][0]
@@ -291,15 +308,22 @@ def schedule_plot(trange = 1*u.day, open_plot=True, verbose=True, future=False):
                 text_offset = text_offsets.get(row['VISIT ID'], 0), time_range_start=tstart, time_range_end=tend)
 
         if (nparallels := len(attached_parallels[row['VISIT ID']])) > 0:
+
             pheight = 0.22 if nparallels < 3 else (0.15 if nparallels ==3 else 0.5/nparallels)
             poffset = 0 if nparallels < 3 else 0.04  if nparallels ==3 else 0.1
+
             for i_parallel, (parallel_type, parallel_visit, parallel_index) in  enumerate(attached_parallels[row['VISIT ID']]):
+                if parallel_type == 'slew':
+                    pstart, pend = prev_visit_end_time, row['visit_fgs_start']
+                else:
+                    pstart, pend = row['visit_fgs_start'], row['visitend']
+
                 p_long_mode, p_mode, p_targ,  p_color = get_visit_info(schedule_full[parallel_index])
-                draw_box(row['visit_fgs_start'], row['visitend'], 0.6 + i_parallel*pheight - poffset, pheight, ax=axes[1],
+                draw_box(pstart, pend, 0.6 + i_parallel*pheight - poffset, pheight, ax=axes[1],
                         color = p_color,
                         text = p_mode + "\n" + parallel_visit,
                         text_offset = text_offsets.get(row['VISIT ID'],0), time_range_start=tstart, time_range_end=tend)
-
+        prev_visit_end_time = row['visitend']
 
     axes[1].fill_between([latest_log_time.plot_date, tend.plot_date], 0, 1, color='0.95', zorder=-10)
     axes[1].axvline(latest_log_time.plot_date, color='0.5', lw=0.5)
