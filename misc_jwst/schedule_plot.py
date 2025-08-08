@@ -281,7 +281,8 @@ def schedule_plot(trange = 1*u.day, open_plot=True, verbose=True, future=False):
 
             sched_start_time = astropy.time.Time(schedrow['SCHEDULED START TIME'])
             delta_time = row['visit_fgs_start'] - sched_start_time
-            edgecolor = 'red' if ('SKIP' in row['notes']) or ('failed' in row['notes']) or ('FAILED' in row['notes'])  or ('unavailable' in row['notes']) or ('ERROR' in row['notes']) else 'black'
+            edgecolor = 'red' if (('SKIP' in row['notes']) or ('failed' in row['notes']) or ('FAILED' in row['notes'])  or
+                ('unavailable' in row['notes']) or ('ERROR' in row['notes'])) else 'black'
 
             if i==len(visit_table[in_time_range])-1:
                 #print(f"latest visit ΔT: {delta_time.to_value(u.hour):+.2f} hr")
@@ -320,7 +321,7 @@ def schedule_plot(trange = 1*u.day, open_plot=True, verbose=True, future=False):
 
                 p_long_mode, p_mode, p_targ,  p_color = get_visit_info(schedule_full[parallel_index])
                 draw_box(pstart, pend, 0.6 + i_parallel*pheight - poffset, pheight, ax=axes[1],
-                        color = p_color,
+                        color = p_color, edgecolor=edgecolor,
                         text = p_mode + "\n" + parallel_visit,
                         text_offset = text_offsets.get(row['VISIT ID'],0), time_range_start=tstart, time_range_end=tend)
         prev_visit_end_time = row['visitend']
