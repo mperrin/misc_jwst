@@ -1516,11 +1516,11 @@ def visit_guiding_sequence(visitid, verbose=True, include_performance=True):
 
             #----- Annotate science exposure times and filenames
             #      and accumulate sci exp times for possible use in jitterball plots during FG, below
+            already_plotted_exptimes_start = set()
             if exposure_table is not None:
                 this_guide_subset = (exposure_table['date_beg_mjd'] > time) & (exposure_table['date_end_mjd'] < time_end)
 
                 sci_file_stack = ""
-                already_plotted_exptimes_start = set()
                 already_plotted_exptimes_end = set()
                 for row in exposure_table[this_guide_subset]:
                     if row['date_beg_mjd']in already_plotted_exptimes_start:
