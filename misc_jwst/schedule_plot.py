@@ -332,8 +332,29 @@ def schedule_plot(trange = 1*u.day, open_plot=True, verbose=True, future=False):
 
     oplabel = schedule_full.meta['op_packages'][1 if tstart > schedule_full.meta['week2_start_time'] else 0]
     axes[0].text(0.005, 0.99, f"OP package: {oplabel}", transform=axes[0].transAxes, verticalalignment='top', fontsize='small')
-    #if tstart > 
 
+    # There may be some gaps where we do not yet have log messages available in the MAST EngDB
+    # let's also mark those in gray
+    # Find timesteps between successive log messages, in floating point days
+    delta_times = log[1:]['MJD'] - log[:-1]['MJD']
+    # find spaces where there is more than 1 hour between log messages
+    maybe_gaps = np.where(delta_times > 1/24)
+    # Some of those may be exposures > 1 hour in duration
+    # we can check this by looking at the subsequent log message after each gap
+    gap_isnt_long_exposure = ['completed exptime' not  in msg for msg in log[maybe_gaps[0]+1]['Message']]
+    # actual gaps are any that aren't long exposures
+    actual_gaps = maybe_gaps[0][gap_isnt_long_exposure]
+    for i in actual_gaps:
+        t0 = astropy.time.Time(log[i  ]['Time'])
+        t1 = astropy.time.Time(log[i+1]['Time'])
+        dt = t1-t0
+        axes[1].fill_between([t0.plot_date,
+                              t1.plot_date], 0, 1, color='0.95', zorder=-10)
+        axes[1].axvline(t0.plot_date, color='0.5', lw=0.5)
+        axes[1].axvline(t1.plot_date, color='0.5', lw=0.5)
+        axes[1].text((t0+dt/2).plot_date, 0.75, "Observatory logs\nnot yet available", verticalalignment='center',  horizontalalignment='center', fontweight='light', fontsize='small')
+
+    ###---------------------------------------------------------------
     ### Engineering Metadata
     for row in dsn_table:
         draw_dsn_box(row, axes[2])
