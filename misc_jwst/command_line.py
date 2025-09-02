@@ -64,7 +64,7 @@ def get_schedule_table():
     # Obtain the most recent 2 schedules
     sched_tables = []
     op_package_labels = []
-    for link in [first_link, second_link]:
+    for link in [second_link, first_link]:  # get the penultimate one first, then the latest one
         schedule_url = 'https://www.stsci.edu' + link.attrs['href']
         schedule = requests.get(schedule_url)
         # Parse it into a table
