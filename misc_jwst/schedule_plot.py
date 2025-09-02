@@ -332,6 +332,12 @@ def schedule_plot(trange = 1*u.day, open_plot=True, verbose=True, future=False):
 
     oplabel = schedule_full.meta['op_packages'][1 if tstart > schedule_full.meta['week2_start_time'] else 0]
     axes[0].text(0.005, 0.99, f"OP package: {oplabel}", transform=axes[0].transAxes, verticalalignment='top', fontsize='small')
+    # If the boundary between scedules is in the time range shown, display it
+    if (tstart < schedule_full.meta['week2_start_time']) & (schedule_full.meta['week2_start_time'] < tend):
+        week2_start_time = astropy.time.Time(schedule_full.meta['week2_start_time'])
+        oplabel2 = schedule_full.meta['op_packages'][1 ]
+        axes[0].text(week2_start_time.plot_date, 0.99, f"  OP package: {oplabel2}",  verticalalignment='top', fontsize='small')
+        axes[0].axvline(week2_start_time.plot_date, color='black', ls='-', lw=0.5)
 
     # There may be some gaps where we do not yet have log messages available in the MAST EngDB
     # let's also mark those in gray
@@ -352,7 +358,7 @@ def schedule_plot(trange = 1*u.day, open_plot=True, verbose=True, future=False):
                               t1.plot_date], 0, 1, color='0.95', zorder=-10)
         axes[1].axvline(t0.plot_date, color='0.5', lw=0.5)
         axes[1].axvline(t1.plot_date, color='0.5', lw=0.5)
-        axes[1].text((t0+dt/2).plot_date, 0.75, "Observatory logs\nnot yet available", verticalalignment='center',  horizontalalignment='center', fontweight='light', fontsize='small')
+        axes[1].text((t0+dt/2).plot_date, 0.75, "Observatory logs\nnot yet available,\nor observatory was idle", verticalalignment='center',  horizontalalignment='center', fontweight='light', fontsize='small')
 
     ###---------------------------------------------------------------
     ### Engineering Metadata
