@@ -10,11 +10,13 @@ import numpy as np
 import scipy
 import functools
 import warnings
+from urllib.request import urlopen
+from io import BytesIO
+
 
 import matplotlib, matplotlib.pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
 import mpl_scatter_density
-
 
 
 import pysiaf
@@ -1607,3 +1609,31 @@ def retrieve_visit_dither_sams(visitid):
                       names = ['TIME', 'SAM_DX', 'SAM_DY'])
 
     return sam_table
+
+#-------- Guide star catalog queries
+
+def query_gsc_by_id(gsid, gscversion='GSC32'):
+    """ Query Guide Star Catalog, by GS ID
+
+    See https://outerspace.stsci.edu/display/MASTDATA/Catalog+Access
+
+    Returns astropy table
+    """
+
+    query_gsc_url = f'https://gsss.stsci.edu/webservices/vo/CatalogSearch.aspx?CATALOG={gscversion}&id={gsid}&FORMAT=CSV'
+    with urlopen(query_gsc_url) as u:
+        s = BytesIO(u.read())
+    return  astropy.table.Table.read(s, format='csv', comment='#')
+
+def query_gsc_conesearch(ra_deg, dec_deg, radius=1*astropy.units.arcsec, gscversion='GSC32'):
+    """ Query Guide Star Catalog, by position on the sky
+
+    See https://outerspace.stsci.edu/display/MASTDATA/Catalog+Access
+
+    Returns astropy table
+    """
+
+    query_gsc_url = f'https://gsss.stsci.edu/webservices/vo/CatalogSearch.aspx?RA={ra_deg}&DEC={dec_deg}&SR={radius.to_value(astropy.units.deg)}&FORMAT=CSV'
+    with urlopen(query_gsc_url) as u:
+        s = BytesIO(u.read())
+    return  astropy.table.Table.read(s, format='csv', comment='#')
