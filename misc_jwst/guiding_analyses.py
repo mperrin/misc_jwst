@@ -832,7 +832,8 @@ def get_visit_contents(visfilename):
 
 def display_one_id_image(filename, destripe = True, smooth=True, ax=None,
                          show_metadata=True, plot_guidestars=True, count=0,
-                        orientation='sci', return_model=False):
+                        orientation='sci', return_model=False,
+                         vmax_sigma=None):
     """Display a JWST Guiding ID image
 
     Displays on a log stretch, optionally with overplotted guide star information if the visit files are available
@@ -878,9 +879,19 @@ def display_one_id_image(filename, destripe = True, smooth=True, ax=None,
     else:
         origin='lower'
 
-    mean, median, sigma = astropy.stats.sigma_clipped_stats(im, )
+    # For bright crowded fields, only part of the FOV has data, surrounded by lots of NaNs
+    is_bcf = (np.nansum(im[0:100]) == 0)
 
-    norm = matplotlib.colors.AsinhNorm(vmin = median-sigma, vmax=10*sigma, linear_width=2*sigma)
+    if is_bcf:
+        # only compute stats on the part that was read out
+        mean, median, sigma = astropy.stats.sigma_clipped_stats(im[672:1372], )
+    else:
+        mean, median, sigma = astropy.stats.sigma_clipped_stats(im, )
+
+    if vmax_sigma is None:
+        vmax_sigma = 50 if is_bcf else 10
+
+    norm = matplotlib.colors.AsinhNorm(vmin = median-sigma, vmax=vmax_sigma*sigma, linear_width=vmax_sigma/5*sigma)
 
     ax.imshow(im, norm=norm, origin=origin)
 
@@ -901,28 +912,11 @@ def display_one_id_image(filename, destripe = True, smooth=True, ax=None,
 
 
     if plot_guidestars:
-        visfilename = f'V{model.meta.observation.visit_id}.vst'
+        ap = get_siaf_aperture(model.meta.instrument.detector)
+        pixscale = (ap.XSciScale + ap.YSciScale)/2
 
-        if os.path.exists(visfilename):
-            if count==0: print(f'Found visit file {visfilename}')
-            vis = get_visit_contents(visfilename)
-            if count==0: print("Retrieving and plotting guide star info from visit file")
-
-            gsinfo = vis.guide_activities[model.meta.guidestar.gs_order - 1]
-
-
-
-            ap = get_siaf_aperture(model.meta.instrument.detector)
-            pixscale = (ap.XSciScale + ap.YSciScale)/2
-
-            if orientation=='raw':
-                coord_transform = ap.idl_to_det
-            else:
-                def coord_transform(*args):
-                    x,y = ap.idl_to_sci(*args)
-                    return  y, model.data.shape[-1]-x  # I don't understand the coord transform and why this flip is needed but it works
-
-            def add_circle(x,y, radius=10/pixscale/3, color='white',
+        # 12 arcsec is the new threshold, as of mid 2025
+        def add_circle(x,y, radius=12/pixscale/3, color='white',
                            label=None):
                 ax.add_patch(matplotlib.patches.Circle( (x,y), radius, edgecolor=color,
                                                        facecolor='none'))
@@ -932,6 +926,21 @@ def display_one_id_image(filename, destripe = True, smooth=True, ax=None,
                 if label is not None:
                     ax.text(x, y, label, color=color, fontweight='bold', alpha=0.75)
 
+
+        visfilename = f'V{model.meta.observation.visit_id}.vst'
+        if os.path.exists(visfilename):
+            if count==0: print(f'Found visit file {visfilename}')
+            vis = get_visit_contents(visfilename)
+            if count==0: print("Retrieving and plotting guide star info from visit file")
+
+            gsinfo = vis.guide_activities[model.meta.guidestar.gs_order - 1]
+
+            if orientation=='raw':
+                coord_transform = ap.idl_to_det
+            else:
+                def coord_transform(*args):
+                    x,y = ap.idl_to_sci(*args)
+                    return  y, model.data.shape[-1]-x  # I don't understand the coord transform and why this flip is needed but it works
 
             dety, detx = coord_transform(gsinfo.GSXID, gsinfo.GSYID)
             #ax.scatter(detx, dety, s=300, marker='o', color='orange', facecolor='none')
@@ -1367,7 +1376,7 @@ def visit_guiding_sequence(visitid, verbose=True, include_performance=True):
     print(f"Retrieving guiding files for {visitid}")
     guiding_file_table = find_all_visit_guiding_files(visitid, autodownload=True)
 
-    if len(guiding_file_table) == 0:
+    if (guiding_file_table is None) or len(guiding_file_table) == 0:
         raise RuntimeError("No guiding files found in MAST for that visit")
 
     filenames = guiding_file_table['Filename']
