@@ -1,3 +1,4 @@
+import os, glob
 import matplotlib
 import matplotlib.dates as mdates
 import matplotlib.pyplot as plt
@@ -9,6 +10,20 @@ import collections
 import textwrap
 import pytz
 
+# subset of template _short_modes that count as spectroscopy
+_templates_spectroscopy = ['MIRI MRS', 'MIRI LRS', 'NIRCam WFSS', 'NIRCam Grism', 'NIRISS WFSS', 'NIRISS SOSS',
+                           'NRS MOS', 'NRS IFU', 'NRS BOTS', 'NRS FS']
+_templates_cal = ['NIRSpec Internal Lamp', 'MIRI Anneal', 'WFSC', 'NIRISS Ext Cal']
+
+MOMENTUM_MAX = 90 # TBD
+
+def get_edgecolor(mode):
+    if mode in _templates_spectroscopy:
+        return 'black'
+    elif mode in _templates_cal or 'Dark' in mode:
+        return '0.25'
+    else: # Imaging
+        return 'navy'
 
 def setup_plot(ax=None, tstart=None, tend=None):
     """ Configure axes for the schedule status plot"""
@@ -82,7 +97,11 @@ def draw_box(tstart, tend, ypos, height, color='white', edgecolor='black', text=
     # This is a bit ad hoc and imperfect but better than nothing.
     is_brief_visit = (tend.plot_date-tstart.plot_date) < 0.05 * plot_time_range   # TBD threshold
     horizontalalignment = 'left' if is_brief_visit else 'center'
-    clip_on = False if is_brief_visit else True
+    # clip_on logic: we want to only let text over-run outside of its box if
+    #   (a) the visit is brief enough that we can't display the text usefully if we clip, and
+    #   (b) the visit is not up against the right edge of the plot such that unclipped text will go
+    #       outside the plot axes entirely
+    clip_on = False if (is_brief_visit and (box_end_time < (time_range_end.plot_date-0.25))) else True
     text_xpos = tstart.plot_date+0.005 if is_brief_visit else (tstart.plot_date + tend.plot_date)/2
     text_ypos = ypos - (text_offset-1)*height/3.2 * is_brief_visit
 
@@ -133,6 +152,47 @@ def get_visit_info(schedule_row):
     return long_mode, short_mode, targname, color
 
 
+_pps_attprofile_path = '/eng/pps/data/jwst/scheduling/dan/sent/sent_files/attProfile'
+
+def get_attplan_by_date(date, verbose=True):
+    """ Load one of the PPS attitude plans, from Central Store as delivered to FDF for scheduling
+    """
+
+    start_time = astropy.time.Time(date)
+
+    # Find all available attitude plans
+    attplans = glob.glob(_pps_attprofile_path + "/*")
+    attplans.sort()
+    datestrs = [os.path.splitext(os.path.basename(fn))[0].split('_')[-1] for fn in attplans]
+    plan_dates = astropy.time.Time.strptime(datestrs, '%Y%j%H%M%S')
+
+    # Find the attitude plan closest in time right before the specific starting time
+    before = (plan_dates < start_time)
+    closest_attplan = np.asarray(attplans)[before][np.argmin(date - plan_dates[before])]
+    if verbose:
+        print(f'Closest attitude plan: {closest_attplan}')
+
+    tab = astropy.table.Table.read( closest_attplan, data_start=14, format='ascii.csv',
+                            names = ['Time', 'V1_RA', 'V1_Dec', 'V3_PA', 'q1', 'q2', 'q3', 'q4', 'Sun_Roll', 'Sun_Pitch', 'Slew_in_Progress', 'Momentum_x', 'Momentum_y', 'Momentum_z', 'Momentum_Unload'])
+        #
+    return tab
+
+
+def plot_attplan(attplan, ax, label=True):
+    """ Plot attitude plan
+    """
+    times = astropy.time.Time.strptime( attplan['Time'], '%Y-%jT%H:%M:%S')
+    total_momentum = np.sqrt(attplan['Momentum_x']**2 + attplan['Momentum_y']**2 + attplan['Momentum_z']**2)
+
+    #ax.plot(times.plot_date, tab['Sun_Roll'], ls='--', label='Sun Roll')
+    # Scale range 5 to -45 into 1 to 0
+    ax.plot(times.plot_date, (45+attplan['Sun_Pitch'])/50, ls='--', label='Sun Pitch', color='DarkOrange')
+
+    ax.plot(times.plot_date, total_momentum/MOMENTUM_MAX, ls='--',
+            label='Momentum' if label else None,
+            color='teal')
+
+
 
 # Define lookup table of colors for plotting visits
 _colors = {'NIRCam':  'lightyellow',
@@ -146,8 +206,14 @@ _colors = {'NIRCam':  'lightyellow',
            'Station': 'purple'}
 
 
-def schedule_plot(trange = 1*u.day, open_plot=True, verbose=True, future=False):
-    now = astropy.time.Time.now()
+def schedule_plot(trange = 1*u.day, open_plot=True, verbose=True, future=False, date=None):
+
+    if date is None:
+        now = astropy.time.Time.now()
+    else:
+        now = astropy.time.Time(date)+24*u.hour    # the date will be the start of the day, so
+                                                   # set the scheudle plot as if that day has just ended
+
     # start and end times for the plot
     if future:
         # show mostly the future
@@ -171,7 +237,7 @@ def schedule_plot(trange = 1*u.day, open_plot=True, verbose=True, future=False):
     # Retrieve DSN comm schedule from the web
     dsn_table = misc_jwst.visit_status.dsn_schedule(verbose=False, return_table=True, lookback=trange)
     # Retrieve schedule from the web
-    schedule_full = get_schedule_table()
+    schedule_full = get_schedule_table(date=date)
 
     #------------------- Parse that retrieved information and prepare tables, lists, etc to plot ----------------------
     latest_log_time = astropy.time.Time(log[-1]['Time'])
@@ -238,10 +304,12 @@ def schedule_plot(trange = 1*u.day, open_plot=True, verbose=True, future=False):
     prev_visit_end_time = now - trange  # placeholder; this variable will be used for slew parallels display only
     for i, row in enumerate(schedule[in_time_range]):
         long_mode, mode, targname, color = get_visit_info(row)
+        is_spectroscopy = mode in _templates_spectroscopy
         text_offsets[row['VISIT ID']] = np.mod(i,3)  # save same offsets to reuse below for consistency
 
+        edgecolor = get_edgecolor(mode)
         draw_box(row['start_time'], row['end_time'], 0.25, 0.4, ax=axes[0],
-                color = color,
+                color = color, edgecolor=edgecolor,
                 text = mode + "\n" + row['VISIT ID'] + "\n" + targname,
                 text_offset = text_offsets[row['VISIT ID']], time_range_start=tstart, time_range_end=tend)
 
@@ -259,7 +327,7 @@ def schedule_plot(trange = 1*u.day, open_plot=True, verbose=True, future=False):
 
 
                 draw_box(pstart, pend, 0.6 + i_parallel*(pheight) - poffset, pheight, ax=axes[0],
-                        color = p_color,
+                        color = p_color, edgecolor = get_edgecolor(p_mode),
                         text = p_mode + "\n" + parallel_visit,
                         text_offset = text_offsets[row['VISIT ID']], time_range_start=tstart, time_range_end=tend)
 
@@ -281,15 +349,16 @@ def schedule_plot(trange = 1*u.day, open_plot=True, verbose=True, future=False):
 
             sched_start_time = astropy.time.Time(schedrow['SCHEDULED START TIME'])
             delta_time = row['visit_fgs_start'] - sched_start_time
-            edgecolor = 'red' if (('SKIP' in row['notes']) or ('failed' in row['notes']) or ('FAILED' in row['notes'])  or
-                ('unavailable' in row['notes']) or ('ERROR' in row['notes'])) else 'black'
+            prime_failed = (('SKIP' in row['notes']) or ('failed' in row['notes']) or ('FAILED' in row['notes'])  or
+                ('unavailable' in row['notes']) or ('ERROR' in row['notes']))
+            edgecolor = 'red' if prime_failed else get_edgecolor(mode)
 
             if i==len(visit_table[in_time_range])-1:
                 #print(f"latest visit ΔT: {delta_time.to_value(u.hour):+.2f} hr")
                 axes[1].text(row['visit_fgs_start'].plot_date, 0.85, f"  Latest visit ΔT:\n  {delta_time.to_value(u.hour):+.2f} hr", color='blue')
                 for ax in axes:
                     ax.axvline(row['visit_fgs_start'].plot_date, ls=':', color='blue')
-            
+
         except IndexError:
             # Handle case where there is no match in the schedule, e.g. due to an intercept, and the published schedule is not yet updated.
             long_mode, mode, targname, color = "Unknown", "", "", '0.7'
@@ -320,8 +389,9 @@ def schedule_plot(trange = 1*u.day, open_plot=True, verbose=True, future=False):
                     pstart, pend = row['visit_fgs_start'], row['visitend']
 
                 p_long_mode, p_mode, p_targ,  p_color = get_visit_info(schedule_full[parallel_index])
+
                 draw_box(pstart, pend, 0.6 + i_parallel*pheight - poffset, pheight, ax=axes[1],
-                        color = p_color, edgecolor=edgecolor,
+                        color = p_color, edgecolor='red' if prime_failed else get_edgecolor(p_mode),
                         text = p_mode + "\n" + parallel_visit,
                         text_offset = text_offsets.get(row['VISIT ID'],0), time_range_start=tstart, time_range_end=tend)
         prev_visit_end_time = row['visitend']
@@ -336,15 +406,16 @@ def schedule_plot(trange = 1*u.day, open_plot=True, verbose=True, future=False):
     if (tstart < schedule_full.meta['week2_start_time']) & (schedule_full.meta['week2_start_time'] < tend):
         week2_start_time = astropy.time.Time(schedule_full.meta['week2_start_time'])
         oplabel2 = schedule_full.meta['op_packages'][1 ]
-        axes[0].text(week2_start_time.plot_date, 0.99, f"  OP package: {oplabel2}",  verticalalignment='top', fontsize='small')
+        # write second OP label on a second line, to avoid text overlapping if the OP boundary is very near the start of the window
+        axes[0].text(week2_start_time.plot_date, 0.99, f"\n  OP package: {oplabel2}",  verticalalignment='top', fontsize='small')
         axes[0].axvline(week2_start_time.plot_date, color='black', ls='-', lw=0.5)
 
     # There may be some gaps where we do not yet have log messages available in the MAST EngDB
     # let's also mark those in gray
     # Find timesteps between successive log messages, in floating point days
     delta_times = log[1:]['MJD'] - log[:-1]['MJD']
-    # find spaces where there is more than 1 hour between log messages
-    maybe_gaps = np.where(delta_times > 1/24)
+    # find spaces where there is more than 1.5 hour between log messages
+    maybe_gaps = np.where(delta_times > 1.5/24)
     # Some of those may be exposures > 1 hour in duration
     # we can check this by looking at the subsequent log message after each gap
     gap_isnt_long_exposure = ['completed exptime' not  in msg for msg in log[maybe_gaps[0]+1]['Message']]
@@ -358,7 +429,7 @@ def schedule_plot(trange = 1*u.day, open_plot=True, verbose=True, future=False):
                               t1.plot_date], 0, 1, color='0.95', zorder=-10)
         axes[1].axvline(t0.plot_date, color='0.5', lw=0.5)
         axes[1].axvline(t1.plot_date, color='0.5', lw=0.5)
-        axes[1].text((t0+dt/2).plot_date, 0.75, "Observatory logs\nnot yet available,\nor observatory was idle", verticalalignment='center',  horizontalalignment='center', fontweight='light', fontsize='small')
+        axes[1].text((t0+dt/2).plot_date, 0.80, "Observatory logs\nnot yet available,\nor observatory was idle", verticalalignment='center',  horizontalalignment='center', fontweight='light', fontsize='small', clip_on=True)
 
     ###---------------------------------------------------------------
     ### Engineering Metadata
@@ -368,7 +439,7 @@ def schedule_plot(trange = 1*u.day, open_plot=True, verbose=True, future=False):
     if verbose:
         print("Retrieving and plotting engineering quantities...")
 
-    # TODO: 
+    # TODO:
     # - sun pitch, sun roll
     # - data volume onboard
     table_ssr = misc_jwst.engdb.get_mnemonic('SF_ZSSRFREE', startdate=tstart.isot, enddate=tend.isot)
@@ -380,23 +451,26 @@ def schedule_plot(trange = 1*u.day, open_plot=True, verbose=True, future=False):
     # - momentum stored
     table_momentum = misc_jwst.engdb.get_mnemonic('SA_ZMOMMAG', startdate=tstart.isot, enddate=tend.isot)
     table_momentum['Time'] = astropy.time.Time(table_momentum['Time'])
-    mom_max = 90 # TBD
-    plt.plot(table_momentum['Time'].plot_date, table_momentum['SA_ZMOMMAG']/mom_max, color='teal', label='Stored Momentum')
+    plt.plot(table_momentum['Time'].plot_date, table_momentum['SA_ZMOMMAG']/MOMENTUM_MAX, color='teal', label='Stored Momentum')
+
+    if os.path.exists(_pps_attprofile_path):  # only accessible if on VPN or ST internal network
+        attplan = get_attplan_by_date(start_time)
+        plot_attplan(attplan, axes[2], label=False)
 
     axes[2].legend(loc='upper right')
 
-    # - J frame? 
+    # - J frame?
 
     for ax in axes:
         ax.set_xlim(tstart.plot_date, tend.plot_date)
 
     tz = pytz.timezone('US/Eastern')
-    fig.text(0.01, 0.01, f"Updated:       {now.iso[0:16]} UTC       {now.to_datetime(tz).isoformat()[0:16]} Baltimore",
+    label_text = 'Updated' if date is None else 'Plotted for past date'
+    fig.text(0.01, 0.01, f"{label_text}:       {now.iso[0:16]} UTC       {now.to_datetime(tz).isoformat()[0:16]} Baltimore",
              fontsize='small')
     plt.tight_layout()
     plt.savefig('current_timeline_plot.png')
     if open_plot:
-        import os
         os.system("open current_timeline_plot.png")
     if verbose:
         print("Saved to current_timeline_plot.png")
