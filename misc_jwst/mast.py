@@ -1,6 +1,5 @@
 import functools
 import os
-import functools
 
 import numpy as np
 
@@ -95,9 +94,9 @@ def jwst_keywords_query(instrument, columns=None, all_columns=False, verbose=Fal
 
 
     # Some date fields are returned (for database format reasons) as strings, containing 'Date' then an integer
-    # giving Unix time in milliseconds. Convert these to astropy times. 
+    # giving Unix time in milliseconds. Convert these to astropy times.
     # This format is not clearly documented, but was reported by MAST archive help desk.
-    date_fields = ['date_beg', 'date_end', 'date_obs']   # This is probably not a complete list of which fields to apply this to
+    date_fields = ['date_beg', 'date_end', 'date_obs', 'publicReleaseDate']   # This is probably not a complete list of which fields to apply this to
     for field_name in date_fields:
         if field_name in responsetable.colnames :
             unix_date_strings = [s[6:-2] for s in responsetable[field_name].value] #  these are strings like '/Date(1679095623534)/'; extract just the numeric part
@@ -283,7 +282,7 @@ def visit_start_end_times(visit):
         return exps[0]['vststart_mjd'], exps[0]['visitend_mjd']
 
     # Method 2: No science instrument data taken, therefore try guider exposures
-    # This handles the case of observations which failed guider ID and took no science image data. 
+    # This handles the case of observations which failed guider ID and took no science image data.
 
     visitid = misc_jwst.utils.get_visitid(visit)  # handle either input format, VPPPPPOOOVVV or PPPP:O:V
     progid = visitid[1:6]
@@ -535,3 +534,137 @@ def get_mast_filename(filename, outputdir='.',
         print(" DOWNLOAD SUCCESSFUL: "+outfile)
     return fd
 
+
+#----- Summarizing available & planned JWST observations from metadata:
+
+
+@functools.cache
+def summarize_jwst_observations(targname, radius='10s', exclude_ta=True):
+    """Search MAST for JWST obs of a target, in all modes, including upcoming approved planned observations
+
+    Returns a nested dictionary, ordered by instrument_mode, then program ID, then filter
+
+    Parameters
+    ----------
+    targname : str
+        target name, for SIMBAD coords query
+    radius : str
+        cone search radius, as a string with units parsable by astropy.coordinates
+    exclude_ta : bool
+        should Target Acquisition exposures be excluded from the results?
+    """
+
+    obstable = Observations.query_criteria(
+            obs_collection='JWST',
+            objectname=targname,
+            radius=radius
+            )
+
+    has_obs = dict()
+
+    for row in obstable:
+        mode = row['instrument_name']
+        filters = str(row['filters'])
+        proposal = row['proposal_id']
+        if row['provenance_name'] == 'APT':
+            proposal  = proposal+"-planned"
+        if exclude_ta and '/TA' in mode:
+            continue
+
+        if mode not in has_obs:
+            has_obs[mode] = dict()
+        if proposal not in has_obs[mode]:
+            has_obs[mode][proposal] = set()
+        has_obs[mode][proposal].add(filters)
+
+    sorted_results_dict = dict(sorted(has_obs.items()))
+    return sorted_results_dict
+
+
+
+def report_jwst_highcontrast_observations(targname, verbose=True):
+    """ Summarize the available and planned JWST observations of a target using high contrast modes
+
+    Returns astropy table of the observations, organized by mode
+
+    Parameters
+    ----------
+    targname : str
+        SIMBAD-resolvable target name
+    verbose : bool
+        be more verbose in output
+
+    """
+    modes = ['NIRCAM/CORON', #'NIRCAM/IMAGE',
+              'NIRSPEC/IFU', #'NIRSPEC/SLIT',
+              'MIRI/CORON', 'MIRI/IFU',
+                      'NIRISS/AMI',
+        ]
+
+    obsinfo = summarize_jwst_observations(targname)
+
+    result_table = astropy.table.Table(names=['Target_Name', ]+modes, dtype=['U30']+['U400',]*len(modes))
+    result_table.add_row()
+    result_table[0]['Target_Name'] = targname
+    for k in modes:
+        if k not in obsinfo:
+            continue
+        if verbose:
+            print(k)
+        program_keys = list(obsinfo[k].keys())
+        program_keys.sort()
+        text = ""
+
+        if k == 'MIRI/CORON' or k =='NIRISS/AMI':
+            # truncate off the uninteresting/redundant 2nd component in these filter;mask pairs.
+            # just report the filter
+            for prog in program_keys:
+                 text+=  ','.join([v.split(';')[0] for v in obsinfo[k][prog]]) + f" ({prog})\n"
+        elif k == "NIRSPEC/IFU":
+            for prog in program_keys:
+                text += ", ".join(g for g in obsinfo[k][prog]) + f" ({prog})\n"
+        elif k == "NIRCAM/CORON":
+
+            for prog in program_keys:
+                maskbar_filts = set()
+                maskrnd_filts = set()
+                planned_filts = set()
+                for j in obsinfo[k][prog]:
+                    parts = j.split(';')
+                    if parts[1]=='MASKRND':
+                        maskrnd_filts.add(parts[0])
+                    elif parts[1]=='MASKBAR':
+                        maskbar_filts.add(parts[0])
+                    else:
+                        planned_filts.add(parts[0])
+                        planned_filts.add(parts[1])
+                maskbar_filts = list(maskbar_filts)
+                maskrnd_filts = list(maskrnd_filts)
+                planned_filts = list(planned_filts)
+
+                maskbar_filts.sort()
+                maskrnd_filts.sort()
+                planned_filts.sort()
+                if len(maskbar_filts):
+                    text += "MASKBAR: "+ ",".join(maskbar_filts) + f" ({prog})\n"
+                if len(maskrnd_filts):
+                    text += "MASKRND: "+ ",".join(maskrnd_filts) + f" ({prog})\n"
+                if len(planned_filts):
+                    text += "         "+ ",".join(planned_filts) + f" ({prog})\n"
+        elif k=='MIRI/IFU':
+            for prog in program_keys:
+                subbands = list(obsinfo[k][prog])
+                subbands.sort()
+                if len(subbands)==12:
+                    summary = "ALL_CHANNELS"
+                else:
+                    summary = ",".join(subbands)
+                text += f"{summary}  ({prog})\n"
+
+        else:
+           for prog in program_keys:
+                text += ", ".join(g for g in obsinfo[k][prog]) + f" ({prog})\n"
+        if verbose:
+            print("\t" + text)
+        result_table[0][k] = text
+    return result_table
