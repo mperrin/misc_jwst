@@ -8,7 +8,7 @@ from requests import Session
 from time import sleep
 import functools
 
-import astropy.table
+import astropy.table, astropy.units as u
 import misc_jwst.utils
 
 # See also https://jwst-pipeline.readthedocs.io/en/latest/jwst/lib/engdb.html
@@ -153,29 +153,30 @@ def get_oss_log_messages(visitid=None, start_time=None, end_time=None):
         msg_table = astropy.table.Table([msg_times, messages, msg_ids, msg_srcs],
                                        names = ['TIME', "EVENT_MSG", "EVENT_MSG_ID", "EVENT_MSG_SRC"])
     else:
-        print("INconsistent number of EVENT_MSG and EVENT_MSG_ID records returned. ")
+        print("INconsistent number of EVENT_MSG and EVENT_MSG_ID records returned; matching based on telemetry time stamps ")
         # This occurs for instance in visit V07344017001, a NIRCam WFSC visit.
-        #raise NotImplementedError("need to write additional case handling")
 
-        # for now, let's just match up the rows that do have consistent timestamps, and hope that includes the relevant TA messages...
-        # It is unclear if this will suffice in all cases. TBC. 
-        n = max(len(msg_times), len(msg_times_2), len(msg_times_3))
-
-        # TODO enhance logic here
-        # for each row in messages
-        #    check if timestamp matches in the other streams
-        #    if so, add to table
-        #    if not, increment an offset counter and check for match again
-
-        for i in range(n):
-            if (msg_times[i] != msg_times_2[i]) or (msg_times[i] != msg_times_3[i]):
-                break
-        print(f"Only considering first {i-1} messages out of {len(messages)} or {len(msg_ids)}")
-        msg_table = astropy.table.Table([msg_times[:i-1], messages[:i-1], msg_ids[:i-1], msg_srcs[:i-1]],
-                                   names = ['TIME', "EVENT_MSG", "EVENT_MSG_ID", "EVENT_MSG_SRC"])
-        # Add the rest in, without bothering to match up MSG_ID or MSG_SRC yet
-        for j in range(i,n):
-            msg_table.add_row({'TIME': msg_times[j], "EVENT_MSG": messages[j]})
+        msg_table = astropy.table.Table([msg_times[0:1], messages[0:1], msg_ids[0:1], msg_srcs[0:1]],
+                           names = ['TIME', "EVENT_MSG", "EVENT_MSG_ID", "EVENT_MSG_SRC"])
+        # match up the rows that do have consistent timestamps
+        # When there's not a match, look 1 row before or after to see if we can find a match
+        n = min(len(msg_times), len(msg_times_2), len(msg_times_3))
+        index_offset = 0  # We will use this to track offsets between mnemonic time series
+        for i in range(1, n):
+            # Compare time stamps between EVENT_MSG and EVENT_MSG_ID mnemonic time series
+            if msg_times[i] - msg_times_2[i+index_offset] == 0*u.second:
+                # times match, no need to adjust
+                pass
+            else:
+                if msg_times[i] == msg_times_2[i+index_offset-1]:
+                    #print('found extra EVENT_MSG relative to EVENT_MSG_ID')
+                    index_offset -= 1
+                elif msg_times[i] == msg_times_2[i+index_offset+1]:
+                    #print('found skipped EVENT_MSG relative to EVENT_MSG_ID')
+                    index_offset += 1
+                else:
+                    raise RuntimeError("Inconsistent number of telemetry records returned, with bigger gaps than this function can currently sort out.")
+            msg_table.add_row([msg_times[i], messages[i], msg_ids[i+index_offset], msg_srcs[i+index_offset]])
 
     return msg_table
 

@@ -5,6 +5,7 @@ from . import engdb
 import requests
 from bs4 import BeautifulSoup
 
+import os
 import argparse
 
 import misc_jwst.utils
@@ -16,6 +17,7 @@ _short_modes = {'MIRI Medium Resolution Spectroscopy': 'MIRI MRS',
                'NIRCam Wide Field Slitless Spectroscopy': 'NIRCam WFSS',
                'NIRCam Engineering Imaging': 'NRC Eng Img',
                'NIRCam Coronagraphic Imaging': 'NIRCam Coron',
+               'NIRCam Grism Time Series': 'NIRCam Grism',
                'NIRISS External Calibration': 'NIRISS Ext Cal',
                'NIRISS Single-Object Slitless Spectroscopy': 'NIRISS SOSS',
                'NIRISS Wide Field Slitless Spectroscopy': 'NIRISS WFSS',
@@ -46,7 +48,7 @@ def jwstops_latest(lookback=48*u.hour):
     print(f"\nLatest available log message ends at {latest_log_time.isot[:-4]}  ({(now-latest_log_time).to_value(u.hour):.1f} hours ago)\n")
 
 
-def get_schedule_table():
+def get_schedule_table(date=None):
     """ Get table of current observing schedules, from web-scraping the PPS postings
     """
     # Get and parse the page listing all available observing schedules. Obtain the URL of the most recent. 
@@ -56,10 +58,32 @@ def get_schedule_table():
     # Search on some formatting stuff that usefully tags a subset of the page markup
     divs = soup.find_all('div', attrs={'class': 'component-block container-fluid'})
 
-    first_link = divs[2].a # First link in second division of that type
-    schedule_url_1 = 'https://www.stsci.edu' + first_link.attrs['href']
-    second_link = divs[2].find_all('a')[1]
-    schedule_url_2 = 'https://www.stsci.edu' + second_link.attrs['href']
+    if date is None:
+        # default behavior for showing current schedules: 
+        # Get the 2 most recent weekly schedules; the first links at the start of the page.
+        first_link = divs[2].a # First link in second division of that type
+        #schedule_url_1 = 'https://www.stsci.edu' + first_link.attrs['href']
+        second_link = divs[2].find_all('a')[1]
+        #schedule_url_2 = 'https://www.stsci.edu' + second_link.attrs['href']
+
+    else:
+        # Get a schedule for some week in the past. The links have URLs which start with a given date
+        all_links = divs[2].find_all('a')
+        close_sched_links = []
+        for link in all_links:
+            url = link.attrs['href']
+            sched_fn = os.path.basename(url)
+            try:
+                year, mon, day = int(sched_fn[0:4]), int(sched_fn[4:6]), int(sched_fn[6:8])
+            except ValueError:
+                continue  # can't parse something, just skip this one. Some very old link
+            sched_date = astropy.time.Time(f'{year}-{mon}-{day}T00:00')
+            #print(year, mon, day, np.abs(sched_date - astropy.time.Time(date)) < 7*u.day)
+            if np.abs(sched_date - (astropy.time.Time(date)-3.5*u.day)) < 7*u.day:
+                print("Found close schedule:", sched_fn)
+                close_sched_links.append(link)
+        first_link, second_link = close_sched_links[0], close_sched_links[1]
+
 
     # Obtain the most recent 2 schedules
     sched_tables = []
@@ -123,7 +147,7 @@ def jwstops_visitlog(visitid, lookback=7*u.day, visit_date=None):
     # Normally it's not needed for a manual date specification but this can be needed to help
     # retrieve logs for failed visits, for which the MAST queries to find visit start/end times don't work
     if visit_date is not None:
-        print(f"  Searching OSS  visit logs starting on {visit_date}...")
+        print(f"  Searching OSS visit logs starting on {visit_date}...")
         start_time = astropy.time.Time(visit_date +"T00:00:00")
         end_time = start_time + 2*u.day
         log = engdb.get_ictm_event_log(startdate=start_time, enddate=end_time)
@@ -149,7 +173,23 @@ def jwstops_visitlog(visitid, lookback=7*u.day, visit_date=None):
 #            log = engdb.get_ictm_event_log(startdate=start_time, enddate=end_time)
 #            visit_table = engdb.eventtable_extract_visit(log, visitid, verbose=False)
 #
-       visit_table = engdb.get_oss_log_messages(visitid)
+        # First, try based on visit id, which will use start/end times from MAST
+        try:
+            visit_table = engdb.get_oss_log_messages(visitid)
+        except RuntimeError:  # visit start time could not be retrieved from MAST. This may be a recent visit so let;s try within the recent lookback period
+            now = astropy.time.Time.now()
+            start_time = now - lookback
+            log = engdb.get_ictm_event_log(startdate=start_time)
+            visit_times_table = engdb.visit_start_end_times(log, verbose=False, return_table=True)
+
+            for row in visit_times_table:
+                if row['visitid'] == visitid:
+                    visit_table = engdb.get_oss_log_messages(visitid, start_time=row['visitstart'], end_time=row['visitend'])
+                    break
+            else:
+                raise RuntimeError("Coud not find any log messages for that visit")
+
+
 
     # visitt table will have columns:
     #  'TIME', "EVENT_MSG", "EVENT_MSG_ID", "EVENT_MSG_SRC"
@@ -239,11 +279,14 @@ def jwstops_deltas(lookback=48*u.hour):
     print(f"Latest available log message ends at {latest_log_time.isot[:-4]}  ({(now-latest_log_time).to_value(u.hour):.1f} hours ago)\n")
 
 
-def jwstops_overview(lookback=48*u.hour):
+def jwstops_overview(lookback=48*u.hour, date=None):
     """ Revised top-level summary overview """
-    now = astropy.time.Time.now()
+    if date is None:
+        now = astropy.time.Time.now()
+    else:
+        now = astropy.time.Time(date+"T23:59:59")
     start_time = now - lookback
-    log = engdb.get_ictm_event_log(startdate=start_time)
+    log = engdb.get_ictm_event_log(startdate=start_time, enddate=now)
     visit_table = engdb.visit_start_end_times(log, verbose=False, return_table=True)
     visit_table['VISIT ID'] = [f"{int(v[1:6])}:{int(v[6:9])}:{int(v[9:12])}" for v in list(visit_table['visitid'].value)]
 
@@ -317,7 +360,7 @@ def jwstops_main():
     parser.add_argument('-d', '--durations',  help='retrieve OSS visit event durations for this visit (within previous week).')
     parser.add_argument('-r', '--range',  default=48.0, help='Set time range in hours forward/back for displaying schedules. (default = 48 hours)')
     parser.add_argument('-f', '--future',  action='store_true', help='Shift time range for displaying schedule plots to bias toward the future. (Default = show 1*range into the past, 0.5*range into the future. This option flips those coefficients.)')
-    parser.add_argument('--visit_date',  help='Manually set date for --visitlog, for cases in which it cannot be automatically determined.')
+    parser.add_argument('--visit_date',  help='Manually set date for --visitlog, for cases in which it cannot be automatically determined; or override date for schedule_plot')
 
     args = parser.parse_args()
 
@@ -348,8 +391,8 @@ def jwstops_main():
     if args.time_deltas:
         jwstops_deltas(lookback=float(args.range)*u.hour)
     if args.overview:
-        jwstops_overview(lookback=float(args.range)*u.hour)
+        jwstops_overview(lookback=float(args.range)*u.hour, date=args.visit_date)
     if args.schedule_plot:
         # import here to avoid circular import at runtime
         from misc_jwst.schedule_plot import schedule_plot
-        schedule_plot(trange=float(args.range)*u.hour, future=args.future)
+        schedule_plot(trange=float(args.range)*u.hour, future=args.future, date=args.visit_date)
