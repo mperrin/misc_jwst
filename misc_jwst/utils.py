@@ -55,6 +55,13 @@ def get_target_coords(model):
                                         model.meta.target.dec,
                                         frame='icrs', unit=u.deg)
 
+def get_guidestar_coords(model):
+    """Get guidestar coordinates at epoch of observation from metadata
+    returns as astropy coordinates"""
+    return astropy.coordinates.SkyCoord(model.meta.guidestar.gs_ra,
+                                        model.meta.guidestar.gs_dec,
+                                        frame='icrs', unit=u.deg)
+
 
 def get_obsid_for_filenames(model):
     return f'jw{model.meta.observation.program_number}obs{model.meta.observation.observation_number}exp{model.meta.observation.exposure_number}'

@@ -96,7 +96,7 @@ def jwst_keywords_query(instrument, columns=None, all_columns=False, verbose=Fal
     # Some date fields are returned (for database format reasons) as strings, containing 'Date' then an integer
     # giving Unix time in milliseconds. Convert these to astropy times.
     # This format is not clearly documented, but was reported by MAST archive help desk.
-    date_fields = ['date_beg', 'date_end', 'date_obs', 'publicReleaseDate']   # This is probably not a complete list of which fields to apply this to
+    date_fields = ['date_beg', 'date_end', 'date_obs', 'publicReleaseDate', 'vststart']   # This is probably not a complete list of which fields to apply this to
     for field_name in date_fields:
         if field_name in responsetable.colnames :
             unix_date_strings = [s[6:-2] for s in responsetable[field_name].value] #  these are strings like '/Date(1679095623534)/'; extract just the numeric part

@@ -185,8 +185,11 @@ def plot_attplan(attplan, ax, label=True):
     total_momentum = np.sqrt(attplan['Momentum_x']**2 + attplan['Momentum_y']**2 + attplan['Momentum_z']**2)
 
     #ax.plot(times.plot_date, tab['Sun_Roll'], ls='--', label='Sun Roll')
-    # Scale range 5 to -45 into 1 to 0
-    ax.plot(times.plot_date, (45+attplan['Sun_Pitch'])/50, ls='--', label='Sun Pitch', color='DarkOrange')
+    # Scale pitch range 5 to -45 into 1 to 0
+    ax.plot(times.plot_date, (45+attplan['Sun_Pitch'])/50, ls='--', alpha=0.5, label='Sun Pitch', color='DarkOrange')
+
+    # Scale roll range -10 to 10 into 0.4 to 0.6
+    ax.plot(times.plot_date, 0.5+(attplan['Sun_Roll'])/20, ls='--', alpha=0.5, label='Sun Roll', color='Brown')
 
     ax.plot(times.plot_date, total_momentum/MOMENTUM_MAX, ls='--',
             label='Momentum' if label else None,
@@ -383,6 +386,13 @@ def schedule_plot(trange = 1*u.day, open_plot=True, verbose=True, future=False, 
             poffset = 0 if nparallels < 3 else 0.04  if nparallels ==3 else 0.1
 
             for i_parallel, (parallel_type, parallel_visit, parallel_index) in  enumerate(attached_parallels[row['VISIT ID']]):
+                # edge color should follow the primary visit color generally, red if primary fails
+                # except for special case of slew parallels, since a slew parallel will in general have
+                # completed OK before a primary visit has any guiding issue or similar problem.
+                # The rare case of potentially the slew parallel failing on its own is not handled here;
+                # has that even happened?
+                parallel_edge_color = 'red' if (prime_failed and (parallel_type != 'slew')) else get_edgecolor(p_mode)
+
                 if parallel_type == 'slew':
                     pstart, pend = prev_visit_end_time, row['visit_fgs_start']
                 else:
@@ -391,7 +401,7 @@ def schedule_plot(trange = 1*u.day, open_plot=True, verbose=True, future=False, 
                 p_long_mode, p_mode, p_targ,  p_color = get_visit_info(schedule_full[parallel_index])
 
                 draw_box(pstart, pend, 0.6 + i_parallel*pheight - poffset, pheight, ax=axes[1],
-                        color = p_color, edgecolor='red' if prime_failed else get_edgecolor(p_mode),
+                        color = p_color, edgecolor=parallel_edge_color,
                         text = p_mode + "\n" + parallel_visit,
                         text_offset = text_offsets.get(row['VISIT ID'],0), time_range_start=tstart, time_range_end=tend)
         prev_visit_end_time = row['visitend']
@@ -469,7 +479,7 @@ def schedule_plot(trange = 1*u.day, open_plot=True, verbose=True, future=False, 
     fig.text(0.01, 0.01, f"{label_text}:       {now.iso[0:16]} UTC       {now.to_datetime(tz).isoformat()[0:16]} Baltimore",
              fontsize='small')
     plt.tight_layout()
-    plt.savefig('current_timeline_plot.png')
+    plt.savefig('current_timeline_plot.png', dpi=150)
     if open_plot:
         os.system("open current_timeline_plot.png")
     if verbose:

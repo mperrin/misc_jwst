@@ -1359,6 +1359,15 @@ def visit_guiding_timeline(visitid):
         i_time += 1
 
 
+def _which_si_from_filenames(filenames_list):
+    """ Minor utility function to infer which SI was used in a given viist, based on filenames
+    """
+    si_filename_strs = {'MIRI': 'mir', 'NIRCAM':'nrc', 'NIRISS':'nis', 'NIRSPEC':'nrs'}
+    for si in si_filename_strs:
+        if si_filename_strs[si] in filenames_list[0]:
+            return si
+    return None
+
 def visit_guiding_sequence(visitid, verbose=True, include_performance=True):
     """ Plot complete image sequence of guiding events within a visit
     including exposures and OSS event log messages, and inferred notes on FGS activity success or failure
@@ -1387,6 +1396,8 @@ def visit_guiding_sequence(visitid, verbose=True, include_performance=True):
     exposure_table = misc_jwst.mast.get_visit_exposure_times(visitid, extra_columns=True)
     if exposure_table is not None:
         exposure_table.sort(['date_beg_mjd', 'filename'])
+    which_si = _which_si_from_filenames(exposure_table['filename'])
+    print("That visit used "+which_si)
 
     # Retrieve the OSS log messages for that visit
     # visitstart = astropy.io.fits.getheader(filenames[0])['VSTSTART']  # use actual visit start time from header
