@@ -135,7 +135,7 @@ def get_oss_log_messages(visitid=None, start_time=None, end_time=None):
     from jwst.lib.engdb_tools import ENGDB_Service
     service = ENGDB_Service()  # By default, will use the public MAST service.
 
-    # There are multiple mnemonics we care about, 
+    # There are multiple mnemonics we care about,
     # in particular the EVENT_MSG has the text, and the MSG_ID and MSG_SRC give metadata on the source
     # Retrieve all of these and organize into a table for convenience.
 
@@ -146,7 +146,7 @@ def get_oss_log_messages(visitid=None, start_time=None, end_time=None):
     #----- Arrange those 3 sets of results into a single Table -----
     # Ideally we should have gotten the same number of rows in all 3 queries above\
     # These -should- all have matching counts and time stamps... but for some reason this is not always the case. Hmm.
-    # So check here and if necessary handle the case of an inconsistency. 
+    # So check here and if necessary handle the case of an inconsistency.
 
     if len(messages) == len(msg_ids) and len(messages) == len(msg_srcs):
         #print("consistent number of rows returned")
@@ -466,6 +466,58 @@ def extract_oss_TA_centroids(eventlog, selected_visit_id):
         raise RuntimeError("Could not parse TA centroid coordinates in that visit log")
 
 
+# Old/obsolete dev code. To be deleted once it's confirmed we don't need any of this:
+#
+# def extract_oss_TA_SAM(eventlog, selected_visit_id, verbose=False):
+#     """ Return the TA SAM values from OSS
+#
+#     returns (X,Y) tuple
+#
+#     Examples of what the logs can look like for this:
+# ---NIRSpec WATA---
+# 2022-11-16 17:52:54.21 	 NIRSpec TA offset vehicle slew calc and SAM
+# 2022-11-16 17:52:56.26 	 From guiding: guider 1 X ideal -24.5140000 Y ideal -31.6730000
+# 2022-11-16 17:52:57.28 	 target location (v2, v3)                           = (321.376298, -474.149793)
+# 2022-11-16 17:52:58.30 	 TA SAM for NRS (x, y) = -0.106834449, 0.300889673
+#     """
+#
+#     msgs = extract_oss_event_msgs_for_visit(eventlog, selected_visit_id,
+#                                             ta_only=False,  # note, the SAM happens after the TA analysis block
+#                                             verbose=False, return_text=True)
+#     for m in msgs:
+#         if verbose:
+#             print(m)
+#         # first find which detector is used for TA
+#         if m.split('\t')[1].startswith("DETECTOR"):
+#             ta_detector = m.split()[-1]
+#
+#         if m.split('\t')[1].startswith("TA SAM"):
+#             print("Found TA SAM message:", m)
+#             print("      for TA using:  ", ta_detector)
+#             if ta_detector in ['NRS1']:
+#                 xy = ([float(p.strip('(),')) for p in m.split()[-2:]])
+#                 return tuple(xy)
+#             elif ta_detector.startswith("NRCA") or ta_detector == 'NIS' or ta_detector.startswith('MIRI'):
+#                 # like "TA SAM (x, y) = 0.0342236531, -0.0112909576"
+#                 xy = [float(p.strip(',')) for p in m.split()[-2:]]
+#                 return tuple(xy)
+#
+#             # TODO determine how to handle other TA modes for this
+#     else:
+#         raise RuntimeError(f"Could not parse TA centroid coordinates in that visit log for {selected_visit_id}")
+#
+#
+#
+# def get_nrs_ta_sam():
+#
+#     """ OSS logs hav text like:
+# 2022-11-16 17:52:56.26 	 From guiding: guider 1 X ideal -24.5140000 Y ideal -31.6730000
+# 2022-11-16 17:52:57.28 	 target location (v2, v3)                           = (321.376298, -474.149793)
+# 2022-11-16 17:52:58.30 	 TA SAM for NRS (x, y) = -0.106834449, 0.300889673
+# """
+#
+#
+
 def parse_eventlog_to_table(eventlog, label=None):
     """Parse an eventlog as returned from the EngDB to an astropy table, for ease of use
 
@@ -563,7 +615,7 @@ def visit_script_durations(event_table, selected_visit_id, verbose=True, return_
         vprint(f"  {key:50s}{deltatime*86400:6.1f} s")
         cumulative_time += deltatime
         activity_id, script = key.split(":")
-        
+
         #summarize into categories: slews, FGS, TA, science obs
         if script=='SCSLEWMAIN':
             category='Slew'
@@ -579,7 +631,7 @@ def visit_script_durations(event_table, selected_visit_id, verbose=True, return_
             category='Other'
 
         summary_durations[category] = summary_durations.get(category,0) + deltatime
-         
+
 
     cumulative_time -= summary_durations.get('Parallel', 0)  # Parallels do not add to total time, by construction
     vprint(f"  Other overheads not included in the above:        {(total_visit_duration-cumulative_time)*86400:6.1f} s")

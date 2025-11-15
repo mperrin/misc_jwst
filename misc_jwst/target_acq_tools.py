@@ -235,7 +235,7 @@ def show_ta_img(visitid, ax=None, return_handles=False, inst='NIRCam', mark_refe
     cmap.set_bad('orange')
 
 
-    print('vmin, vmax, asinh_linear', -1*rsig, vmax, asinh_linear_width)
+    # print('vmin, vmax, asinh_linear', -1*rsig, vmax, asinh_linear_width)
     norm = matplotlib.colors.AsinhNorm(linear_width = asinh_linear_width, vmax=vmax, #vmin=0)
                                        vmin=-1*rsig)
 
@@ -484,7 +484,8 @@ def main_ta_analysis(visitid, inst='NIRCam', verbose=True,  plot=True, output_pl
                 #print("OSS SAM via engdb", oss_sam)
                 oss_sam, oss_sam_dpa = misc_jwst.oss_ta_sams.get_ta_correction_for_visit(visitid, verbose=verbose,)
                                                                                          #msg_table=osslog)
-                print("OSS SAM: (∆V2, ∆V3) = {oss_sam}  ∆V3PA = {sam_dpa}")
+                if verbose:
+                    print(f"OSS SAM: (∆V2, ∆V3) = {oss_sam}  ∆V3PA = {oss_sam_dpa}")
 
 
             except RuntimeError:
@@ -554,12 +555,14 @@ def main_ta_analysis(visitid, inst='NIRCam', verbose=True,  plot=True, output_pl
         ### Print annotations in the images
         if i_ta_image == show_oss_for_image:
 
-            print("Comparing to OSS on-board centroid")
+            if verbose:
+                print(f"Comparing to OSS on-board centroid for TA image {i_ta_image+1}")
             # For this image, we have an OSS centroid and can compare to that
             deltapos = (oss_cen_sci_pythonic[0] - xref,  oss_cen_sci_pythonic[1] - yref)
             deltapos_type = 'OSS - Intended'
         else:
-            print("Comparing to local STPSF centroid")
+            if verbose:
+                print(f"Comparing to local STPSF centroid for TA image {i_ta_image+1}")
             # if more than 1 image, for the earlier images, or subsequent TACONFIRMs, show the comparison to webbpsf centroids
             deltapos = (cen[1] - xref,  cen[0] - yref)
             deltapos_type = 'fwcentroid-Intended'
@@ -1465,8 +1468,6 @@ def nirspec_wata_ta_analysis(visitid, verbose=True, show_centroids=True):
     outname = f'nrs_ta_analysis_{visitid}.pdf'
     plt.savefig(outname)
     print(f" => {outname}")
-
-
 
 
 ###### Overall ############
