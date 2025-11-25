@@ -270,7 +270,11 @@ def parse_ta_log_messages_by_instrument(msg_table, which_guider, visitid, verbos
         # MIRI has some variable number of TA sams
         ta_sams = get_messages_by_id(msg_table, MSGID_TA_SAM_GENERIC)
 
-        if len(ta_sams) == 1:
+        if len(ta_sams) == 0:
+            # TA must have failed
+            print(f"No TA SAMs found for visit {visitid}; TA must have failed.")
+            net_ta_correction = np.nan, np.nan
+        elif len(ta_sams) == 1:
             ta_type = 'MIRI TA, undithered'
             # Simple MIRI TA, including MRS with TA. No dithers.
             net_ta_correction = get_sam_xy(ta_sams[0])

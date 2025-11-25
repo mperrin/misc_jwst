@@ -34,9 +34,9 @@ _ta_dither_offsets_pix = {'NIRCAM': {0: [0,0],
 _ta_dither_sign = {'NRCALONG': [1, -1],
                    'NRCBLONG': [1,1],  # TODO check this. But NRC TSO TA isn't dithered.
                     'NRCA1': [1,1],    # TODO check this. But not directly relevant since thus far there have been no dithered TAs on NRCA2
-                    'NRCA2': [1,1],    # TODO check this. But not directly relevant since thus far there have been no dithered TAs on NRCA2
+                    'NRCA2': [-1, 1],   # Needed to match data for F210M TAs on NRCA2 in 2025
                     'NRCA3': [1,1],    # TODO check this. But not directly relevant since WFS TA doesn't use dithers
-                    'NRCA4': [1,1],    # TODO check this. But not directly relevant since WFS TA doesn't use dithers
+                    'NRCA4': [-1, 1],   # Needed to match data for F210M TAs on NRCA2 in 2025
                     'NIS': [1,1],      # TODO check this.
                    }
 
@@ -411,9 +411,21 @@ def main_ta_analysis(visitid, inst='NIRCam', verbose=True,  plot=True, output_pl
         im_obs_clean = im_obs.copy()
         im_obs_clean[im_obs_dq & 1] = np.nan  # Mask out any DO_NOT_USE pixels.
         im_obs_clean = astropy.convolution.interpolate_replace_nans(im_obs, kernel=np.ones(interp_kernel_size))
-        while np.any(np.isnan(im_obs_clean)):
-            print('iterating to interpolate over more NaNs')
-            im_obs_clean = astropy.convolution.interpolate_replace_nans(im_obs_clean, kernel=np.ones(interp_kernel_size))
+        #while np.any(np.isnan(im_obs_clean)):
+        # clean some more NaNs -- do a few passes of interpolation, and if there are still some after that, then
+        # set them all to the image median.
+        for i in range(2):
+            if  np.any(np.isnan(im_obs_clean)):
+                print('iterating to interpolate over more NaNs')
+                im_obs_clean = astropy.convolution.interpolate_replace_nans(im_obs_clean, kernel=np.ones(interp_kernel_size))
+            else:
+                break
+        else:
+            if np.any(np.isnan(im_obs_clean)):
+                print("Masking remaining NaNs to image median")
+                im_obs_clean[np.isnan(im_obs_clean)] = np.nanmedian(im_obs_clean)
+
+
 
         aperture_text = f'Intended target pos: {xref:.2f}, {yref:.2f}'
 

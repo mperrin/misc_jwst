@@ -1394,9 +1394,11 @@ def visit_guiding_sequence(visitid, verbose=True, include_performance=True):
 
     # Retrieve science exposure filenames and times
     exposure_table = misc_jwst.mast.get_visit_exposure_times(visitid, extra_columns=True)
-    if exposure_table is not None:
+    if exposure_table is None:
+        which_si = "UNKNOWN (no science files found in MAST for that visit)"
+    else:
         exposure_table.sort(['date_beg_mjd', 'filename'])
-    which_si = _which_si_from_filenames(exposure_table['filename'])
+        which_si = _which_si_from_filenames(exposure_table['filename'])
     print("That visit used "+which_si)
 
     # Retrieve the OSS log messages for that visit
