@@ -277,6 +277,8 @@ def schedule_plot(trange = 1*u.day, open_plot=True, verbose=True, future=False, 
             attached_parallels[prime_visit].append(('pure', row['VISIT ID'], i))  # parallel type, attached parallel visit id, and index into this table
         elif row['VISIT TYPE'] == "PARALLEL SLEW CALIBRATION":
             attached_parallels[prime_visit].append(('slew', row['VISIT ID'], i))  # parallel type, attached parallel visit id, and index into this table
+        elif row['VISIT TYPE'] == "PARALLEL DARK CALIBRATION":
+            attached_parallels[prime_visit].append(('dark', row['VISIT ID'], i))  # parallel type, attached parallel visit id, and index into this table
         else:
             # There can be extra rows with no visit type; these list extra targets, e.g. TA ref stars, for certain NIRSpec visits.
             # We can ignore these.
