@@ -72,6 +72,10 @@ def draw_box(tstart, tend, ypos, height, color='white', edgecolor='black', text=
              **kwargs):
     """Draw a box on the schedule status plot, with text annotation
     Bunch of extra complications for cosmetic display of text that attempts to minimizes overlap
+
+    Parameters:
+        ypos : float
+            The **midpoint height** of the box
     """
     if ax is None:
         ax = plt.gca()
@@ -103,7 +107,15 @@ def draw_box(tstart, tend, ypos, height, color='white', edgecolor='black', text=
     #       outside the plot axes entirely
     clip_on = False if (is_brief_visit and (box_end_time < (time_range_end.plot_date-0.25))) else True
     text_xpos = tstart.plot_date+0.005 if is_brief_visit else (tstart.plot_date + tend.plot_date)/2
-    text_ypos = ypos - (text_offset-1)*height/3.2 * is_brief_visit
+
+    # for narrow boxes for lots of stacked parallels, force the text to be centered on the box no matter what
+    # for regular boxes, we allow it to shift up and down to try to avoid text from adjacent boxes overlapping
+    if height < 0.15:
+        text_ypos = ypos
+        print('text ypos', ypos, 'height', height, text)
+    else:
+        text_ypos = ypos - (text_offset-1)*height/3.2 * is_brief_visit
+
 
     xlim = ax.get_xlim()
     if xlim[0] < text_xpos < xlim[1]:
@@ -210,6 +222,8 @@ _colors = {'NIRCam':  'lightyellow',
 
 
 def schedule_plot(trange = 1*u.day, open_plot=True, verbose=True, future=False, date=None):
+    """ Main schedule plot function!
+    """
 
     if date is None:
         now = astropy.time.Time.now()
@@ -297,6 +311,15 @@ def schedule_plot(trange = 1*u.day, open_plot=True, verbose=True, future=False, 
 
 
     ###--------------------  Plot the plot !-----------------------------------------
+
+    def get_pheight(nparallels):
+        # get parallel height and offset
+        pheight = min(0.40 / nparallels, 0.20)  #0.22 if nparallels < 3 else (0.15 if nparallels ==3 else 0.44/nparallels)
+        # want to offset the -center- of the first item such that the bottom of it ends up at 0.49
+        poffset = 0.49 - 0.6 + pheight/2
+        return pheight, poffset
+
+
     if verbose:
         print("Plotting visit status...")
     fig, axes = setup_plot(tstart=tstart, tend=tend)
@@ -321,8 +344,7 @@ def schedule_plot(trange = 1*u.day, open_plot=True, verbose=True, future=False, 
         nparallels = len(attached_parallels[row['VISIT ID']])
         if nparallels > 0:
             for i_parallel, (parallel_type, parallel_visit, parallel_index) in  enumerate(attached_parallels[row['VISIT ID']]):
-                pheight = 0.22 if nparallels < 3 else (0.15 if nparallels ==3 else 0.5/nparallels)
-                poffset = 0 if nparallels < 3 else 0.04  if nparallels ==3 else 0.1
+                pheight, poffset = get_pheight(nparallels)
                 p_long_mode, p_mode, p_targ,  p_color = get_visit_info(schedule_full[parallel_index])
 
                 if parallel_type == 'slew':
@@ -331,7 +353,9 @@ def schedule_plot(trange = 1*u.day, open_plot=True, verbose=True, future=False, 
                     pstart, pend = row['start_time'], row['end_time']
 
 
-                draw_box(pstart, pend, 0.6 + i_parallel*(pheight) - poffset, pheight, ax=axes[0],
+                #if i_parallel == 0:
+                #    print(parallel_visit, pheight, poffset, 0.6 + i_parallel*(pheight) + poffset, 0.06 + poffset - pheight/2)
+                draw_box(pstart, pend, 0.6 + i_parallel*(pheight) + poffset, pheight, ax=axes[0],
                         color = p_color, edgecolor = get_edgecolor(p_mode),
                         text = p_mode + "\n" + parallel_visit,
                         text_offset = text_offsets[row['VISIT ID']], time_range_start=tstart, time_range_end=tend)
@@ -384,8 +408,7 @@ def schedule_plot(trange = 1*u.day, open_plot=True, verbose=True, future=False, 
 
         if (nparallels := len(attached_parallels[row['VISIT ID']])) > 0:
 
-            pheight = 0.22 if nparallels < 3 else (0.15 if nparallels ==3 else 0.5/nparallels)
-            poffset = 0 if nparallels < 3 else 0.04  if nparallels ==3 else 0.1
+            pheight, poffset = get_pheight(nparallels)
 
             for i_parallel, (parallel_type, parallel_visit, parallel_index) in  enumerate(attached_parallels[row['VISIT ID']]):
                 # edge color should follow the primary visit color generally, red if primary fails
@@ -402,7 +425,7 @@ def schedule_plot(trange = 1*u.day, open_plot=True, verbose=True, future=False, 
 
                 p_long_mode, p_mode, p_targ,  p_color = get_visit_info(schedule_full[parallel_index])
 
-                draw_box(pstart, pend, 0.6 + i_parallel*pheight - poffset, pheight, ax=axes[1],
+                draw_box(pstart, pend, 0.6 + i_parallel*pheight + poffset, pheight, ax=axes[1],
                         color = p_color, edgecolor=parallel_edge_color,
                         text = p_mode + "\n" + parallel_visit,
                         text_offset = text_offsets.get(row['VISIT ID'],0), time_range_start=tstart, time_range_end=tend)
