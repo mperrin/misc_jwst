@@ -4,7 +4,7 @@ import matplotlib, matplotlib.pyplot as plt
 import numpy as np
 
 import pysiaf
-import webbpsf
+import stpsf as webbpsf
 import scipy
 import astropy
 import astropy.io.fits as fits
@@ -540,6 +540,10 @@ def main_ta_analysis(visitid, inst='NIRCam', verbose=True,  plot=True, output_pl
             # Special case, it's a full frame image but enforce just centroiding in the TA region of interest
             border_mask[:] = 0
             border_mask[260:320, 390:440] = 1
+        elif hdul[0].header['APERNAME']=='MIRIM_TAMRS':
+            # Special case, it's a full frame image but enforce just centroiding in the TA region of interest
+            border_mask[:] = 0
+            border_mask[958:1018, 960:1022] = 1
         elif hdul[0].header['APERNAME']=='MIRIM_SLIT':
             border_mask[:] = 0
             border_mask[270:330, 290:350] = 1
@@ -553,7 +557,6 @@ def main_ta_analysis(visitid, inst='NIRCam', verbose=True,  plot=True, output_pl
             imin, imax = (150, 225) if 'LYOT' in hdul[0].header['APERNAME'] else (100, 150)
             border_mask[:] = 0
             border_mask[imin:imax, imin:imax] = 1
-
 
         cen = webbpsf.fwcentroid.fwcentroid(im_obs_clean*border_mask)
         if plot:
