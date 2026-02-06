@@ -222,8 +222,8 @@ def _check_log_and_note_issues(msg, prior_note=None):
         note = 'MIRI target acq failed'
     elif 'NIRCam target locate failed' in msg or 'NRC target locate failed' in msg:
         note = 'NIRCam target acq failed'
-    elif 'NIRSpec TA Roll too big' in msg:
-        note = "NIRSpec MSATA failed; roll too big"
+    elif ('NIRSpec TA Roll too big' in msg) or ('NIRSpec TA Roll too large' in msg):
+        note = "NIRSpec MSATA failed; roll too large"
     elif 'subsystem unavailable' in msg:  # This checks for like 'NRC subsystem unavailable'
         note = msg.split(',')[0]
     elif 'Visit constraint violation' in msg:  # This may follow a subsystem unavailable
