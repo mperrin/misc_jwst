@@ -56,7 +56,9 @@ def get_schedule_table(date=None):
     soup = BeautifulSoup(r.content, features="lxml")
 
     # Search on some formatting stuff that usefully tags a subset of the page markup
-    divs = soup.find_all('div', attrs={'class': 'component-block container-fluid'})
+    # updated 2026 April after some apparent web page formatting change
+    sections = soup.find_all('section', attrs={'data-name': 'section-jwst-weekly-observing-schedules'})
+    divs = sections[0].find_all('div', attrs={'class': 'component-block container-fluid'})
 
     if date is None:
         # default behavior for showing current schedules: 
@@ -147,7 +149,7 @@ def jwstops_visitlog(visitid, lookback=7*u.day, visit_date=None):
     # Normally it's not needed for a manual date specification but this can be needed to help
     # retrieve logs for failed visits, for which the MAST queries to find visit start/end times don't work
     if visit_date is not None:
-        print(f"  Searching OSS visit logs starting on {visit_date}...")
+        print(f"  Searching OSS visit logs for a 2 day window starting on {visit_date}T00:00...")
         start_time = astropy.time.Time(visit_date +"T00:00:00")
         end_time = start_time + 2*u.day
         log = engdb.get_ictm_event_log(startdate=start_time, enddate=end_time)
