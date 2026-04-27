@@ -112,7 +112,6 @@ def draw_box(tstart, tend, ypos, height, color='white', edgecolor='black', text=
     # for regular boxes, we allow it to shift up and down to try to avoid text from adjacent boxes overlapping
     if height < 0.15:
         text_ypos = ypos
-        print('text ypos', ypos, 'height', height, text)
     else:
         text_ypos = ypos - (text_offset-1)*height/3.2 * is_brief_visit
 
@@ -252,7 +251,10 @@ def schedule_plot(trange = 1*u.day, open_plot=True, verbose=True, future=False, 
         print("Retrieving status...")
     log = engdb.get_ictm_event_log(startdate=start_time)
     # Retrieve DSN comm schedule from the web
-    dsn_table = misc_jwst.visit_status.dsn_schedule(verbose=False, return_table=True, lookback=trange)
+    try:
+        dsn_table = misc_jwst.visit_status.dsn_schedule(verbose=False, return_table=True, lookback=trange)
+    except ValueError:
+        dsn_table = []
     # Retrieve schedule from the web
     schedule_full = get_schedule_table(date=date)
 
@@ -384,7 +386,7 @@ def schedule_plot(trange = 1*u.day, open_plot=True, verbose=True, future=False, 
 
             if i==len(visit_table[in_time_range])-1:
                 #print(f"latest visit ΔT: {delta_time.to_value(u.hour):+.2f} hr")
-                axes[1].text(row['visit_fgs_start'].plot_date, 0.85, f"  Latest visit ΔT:\n  {delta_time.to_value(u.hour):+.2f} hr", color='blue')
+                axes[1].text(row['visit_fgs_start'].plot_date, 0.85, f"  Latest visit ΔT:\n  {delta_time.to_value(u.hour):+.2f} hr", color='blue', clip_on=True)
                 for ax in axes:
                     ax.axvline(row['visit_fgs_start'].plot_date, ls=':', color='blue')
 
@@ -411,19 +413,19 @@ def schedule_plot(trange = 1*u.day, open_plot=True, verbose=True, future=False, 
             pheight, poffset = get_pheight(nparallels)
 
             for i_parallel, (parallel_type, parallel_visit, parallel_index) in  enumerate(attached_parallels[row['VISIT ID']]):
-                # edge color should follow the primary visit color generally, red if primary fails
-                # except for special case of slew parallels, since a slew parallel will in general have
-                # completed OK before a primary visit has any guiding issue or similar problem.
-                # The rare case of potentially the slew parallel failing on its own is not handled here;
-                # has that even happened?
-                parallel_edge_color = 'red' if (prime_failed and (parallel_type != 'slew')) else get_edgecolor(p_mode)
-
                 if parallel_type == 'slew':
                     pstart, pend = prev_visit_end_time, row['visit_fgs_start']
                 else:
                     pstart, pend = row['visit_fgs_start'], row['visitend']
 
                 p_long_mode, p_mode, p_targ,  p_color = get_visit_info(schedule_full[parallel_index])
+
+                # edge color should follow the primary visit color generally, red if primary fails
+                # except for special case of slew parallels, since a slew parallel will in general have
+                # completed OK before a primary visit has any guiding issue or similar problem.
+                # The rare case of potentially the slew parallel failing on its own is not handled here;
+                # has that even happened?
+                parallel_edge_color = 'red' if (prime_failed and (parallel_type != 'slew')) else get_edgecolor(p_mode)
 
                 draw_box(pstart, pend, 0.6 + i_parallel*pheight + poffset, pheight, ax=axes[1],
                         color = p_color, edgecolor=parallel_edge_color,
