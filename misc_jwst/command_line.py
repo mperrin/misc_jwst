@@ -342,6 +342,21 @@ def jwstops_overview(lookback=48*u.hour, date=None):
     print(f"\nTimes above refer to scheduled/actual start times of FGS guide star ID+acq for each visit.\nNegative ΔT means observatory ahead of schedule, positive is behind schedule.\n")
 
 
+
+def wavefront_plot():
+    import stpsf
+    import matplotlib.pyplot as plt
+    import subprocess
+    opdtable = stpsf.mast_wss.retrieve_mast_opd_table()
+    opdtable = stpsf.mast_wss.deduplicate_opd_table(opdtable)
+    #stpsf.mast_wss.download_all_opds(opdtable)
+    stpsf.trending.single_measurement_trending_plot(opdtable, row_index=-1, vmax=0.05);
+    plt.savefig('wavefront_trending_plot.pdf')
+    result = subprocess.run(["open", "wavefront_trending_plot.pdf"])
+
+
+
+
 def jwstops_main():
     parser = argparse.ArgumentParser(
         description='JWST Ops tools'
@@ -363,6 +378,7 @@ def jwstops_main():
     parser.add_argument('-r', '--range',  default=48.0, help='Set time range in hours forward/back for displaying schedules. (default = 48 hours)')
     parser.add_argument('-f', '--future',  action='store_true', help='Shift time range for displaying schedule plots to bias toward the future. (Default = show 1*range into the past, 0.5*range into the future. This option flips those coefficients.)')
     parser.add_argument('--visit_date',  help='Manually set date for --visitlog, for cases in which it cannot be automatically determined; or override date for schedule_plot')
+    parser.add_argument('-W', '--wavefront',  action='store_true', help='show most recent wavefront sensing data')
 
     args = parser.parse_args()
 
@@ -398,3 +414,6 @@ def jwstops_main():
         # import here to avoid circular import at runtime
         from misc_jwst.schedule_plot import schedule_plot
         schedule_plot(trange=float(args.range)*u.hour, future=args.future, date=args.visit_date)
+
+    if args.wavefront:
+        wavefront_plot()
