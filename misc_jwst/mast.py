@@ -29,7 +29,7 @@ def set_params(parameters):
     return [{'paramName': p, 'values': v} for p, v in parameters.items()]
 
 
-def jwst_keywords_query(instrument, columns=None, all_columns=False, verbose=False,  **kwargs):
+def jwst_keywords_query(instrument, columns=None, more_columns=None, all_columns=False, verbose=False,  **kwargs):
     """JWST keyword query
 
     See https://mast.stsci.edu/api/v0/_jwst_inst_keywd.html for keyword field reference
@@ -63,6 +63,10 @@ def jwst_keywords_query(instrument, columns=None, all_columns=False, verbose=Fal
 
     if columns is None:
         columns = 'filename, program, observtn, visit_id, category, template, exp_type, vststart_mjd, visitend_mjd, bstrtime, dataURI'
+    if more_columns is not None:
+        columns += ", " + more_columns
+        print('added more columns: '+more_columns)
+        print(columns)
 
     keywords = dict()
 
@@ -153,7 +157,7 @@ def query_visit_time(visitid, verbose=False):
 
     # Get table of times for all visits in that program
     program = visitid[1:6]
-    visit_times = query_program_visit_times(program, verbose=verbose)
+    visit_times = query_program_visit_times(program, use_guidestar=True, verbose=verbose)
 
     #  Scan through the table for a row matching that visit id
     for vid, vstart, vend, inst in visit_times:
@@ -218,7 +222,7 @@ def get_visit_exposure_times(visitid, extra_columns=""):
 get_visit_start_end_times = query_visit_time # synonym, for API consistency
 
 
-def query_program_visit_times(program,  verbose=False):
+def query_program_visit_times(program,  verbose=False, use_guidestar=False):
     """ Get the start and end times of all completed visits in a program.
 
     See also visit_start_end_times for a specifc named visit..
@@ -229,17 +233,24 @@ def query_program_visit_times(program,  verbose=False):
         Program ID
     verbose : bool
         be more verbose in output?
+    use_guidestar : bool
+        Should we use guidestar data (instead of SI data) to try to infer the visit start and end times?
+        Useful if the visit failed before taking any science data.
 
     Returns astropy Table with columns for visit ID and start and end times.
     """
 
-    # use Observations query interface to find all observations
-    from astroquery.mast import Observations
-    obs = Observations.query_criteria(obs_collection=["JWST"], proposal_id=[program])
+    if use_guidestar:
+        instruments = ['guidestar', ]
+    else:
+        # Figure out which science instruments were used for this visit.
+        # use Observations query interface to find all observations
+        from astroquery.mast import Observations
+        obs = Observations.query_criteria(obs_collection=["JWST"], proposal_id=[program])
 
-    # Annoyingly, that query interface doesn't return start/end times,
-    # therefore we have to separately call a different query interface for those, per instrument
-    instruments = [val.split('/')[0] for val in set(obs['instrument_name'])]
+        # Annoyingly, that query interface doesn't return start/end times,
+        # therefore we have to separately call a different query interface for those, per instrument
+        instruments = [val.split('/')[0] for val in set(obs['instrument_name'])]
     visit_times = []
     import warnings
     with warnings.catch_warnings():
@@ -257,6 +268,7 @@ def query_program_visit_times(program,  verbose=False):
     vis_table =  astropy.table.Table([vids, starts, ends, insts],
                                      names=('visit_id', 'start_mjd', 'end_mjd', 'instrument'))
     vis_table.sort(keys='start_mjd')
+    vis_table = astropy.table.unique(vis_table)  # discard any duplicate rows
     return vis_table
 
 def visit_start_end_times(visit):
@@ -283,6 +295,8 @@ def visit_start_end_times(visit):
 
     # Method 2: No science instrument data taken, therefore try guider exposures
     # This handles the case of observations which failed guider ID and took no science image data.
+    print(f"Inferring start/end times from guider data for {visit}")
+
 
     visitid = misc_jwst.utils.get_visitid(visit)  # handle either input format, VPPPPPOOOVVV or PPPP:O:V
     progid = visitid[1:6]
@@ -333,11 +347,16 @@ def _query_program_visit_times_by_inst(program, instrument, verbose=False):
                  'NIRSPEC': 'Mast.Jwst.Filtered.NIRSpec',
                  'NIRISS': 'Mast.Jwst.Filtered.NIRISS',
                  'FGS': 'Mast.Jwst.Filtered.FGS',
+                 'GUIDESTAR': 'Mast.Jwst.Filtered.GuideStar',
                 }
 
     service = svc_table[instrument.upper()]
 
-    collist = 'filename, program, observtn, visit_id, vststart_mjd, visitend_mjd, bstrtime'
+    if instrument.upper() == 'GUIDESTAR':
+        collist = 'filename, program, observtn, visit_id, vststart_mjd, visitend_mjd'
+    else:
+        collist = 'filename, program, observtn, visit_id, vststart_mjd, visitend_mjd, bstrtime'
+
     all_columns = False
 
     def set_params(parameters):

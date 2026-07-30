@@ -367,6 +367,10 @@ def visit_start_end_times(eventlog, visitid=None, return_table=False, verbose=Tr
             print(row)
 
     if return_table:
+
+        if len(outputs) == 0:
+            raise RuntimeError("Telemetry query returned zero data records. Check the time period of your query...")
+
         t = astropy.table.Table(list(outputs.values()), names = outputs.keys() )
         t["notes"] = t["notes"].astype("<U100")  # ensure we can stick in quite long text notes, if needed
         t['visitstart'] = astropy.time.Time(t['visitstart'])

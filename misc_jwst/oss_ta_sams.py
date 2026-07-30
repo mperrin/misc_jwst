@@ -274,6 +274,7 @@ def parse_ta_log_messages_by_instrument(msg_table, which_guider, visitid, verbos
             # TA must have failed
             print(f"No TA SAMs found for visit {visitid}; TA must have failed.")
             net_ta_correction = np.nan, np.nan
+            ta_type = "TA FAILED"
         elif len(ta_sams) == 1:
             ta_type = 'MIRI TA, undithered'
             # Simple MIRI TA, including MRS with TA. No dithers.
@@ -300,6 +301,8 @@ def parse_ta_log_messages_by_instrument(msg_table, which_guider, visitid, verbos
             net_ta_correction = get_net_sam(ta_sams[1:])  # ignore the first (0th) SAM from the TA Block region
             ta_v2v3_offset = -1 * get_miri_offset_between_coron_ta_regions(visitid, verbose=verbose)   # Note we want a sign flip here!
             ta_v2v3_offset_source = 'MIRI coron offset between TA subregions'
+        else:
+            raise RuntimeError(f"Unexpected number of TA SAMS: {len(ta_sams)}. Only know how to handle values 0 to 3.")
 
 
         if verbose:

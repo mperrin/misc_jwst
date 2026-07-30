@@ -4,7 +4,7 @@ import matplotlib, matplotlib.pyplot as plt
 import numpy as np
 
 import pysiaf
-import stpsf as webbpsf
+import stpsf
 import scipy
 import astropy
 import astropy.io.fits as fits
@@ -12,7 +12,7 @@ import astropy.units as u
 import astropy.time
 import jwst.datamodels, stdatamodels
 
-from misc_jwst import utils
+from misc_jwst import utils, mast
 import misc_jwst.engdb, misc_jwst.oss_ta_sams
 
 
@@ -42,7 +42,8 @@ _ta_dither_sign = {'NRCALONG': [1, -1],
 
 
 @functools.lru_cache
-def get_visit_ta_image(visitid, verbose=True, kind='cal', inst='NIRCam', index=0, localpath=None, save_localpath=False, local_directory="./"):
+def get_visit_ta_image(visitid, verbose=True, kind='cal', inst='NIRCam', index=0, localpath=None, save_localpath=False, local_directory="./",
+                       return_as_datamodel=False):
     """Retrieve from MAST the NIRCam target acq image for a given visit.
 
     This retrieves an image (or images) from MAST and returns it as a HDUList variable
@@ -54,6 +55,8 @@ def get_visit_ta_image(visitid, verbose=True, kind='cal', inst='NIRCam', index=0
     """
 
     from astroquery.mast import Mast
+    visitid = utils.get_visitid(visitid)  # handle either input format
+
     keywords = {
             'visit_id': [visitid[1:]], # note: drop the initial character 'V'
             'exp_type': ['NRC_TACQ', 'MIR_TACQ', 'MIR_TACONFIRM', 'NRS_WATA', 'NRS_TACONFIRM', 'NIS_TACQ'],
@@ -63,6 +66,7 @@ def get_visit_ta_image(visitid, verbose=True, kind='cal', inst='NIRCam', index=0
     def set_params(parameters):
         return [{"paramName" : p, "values" : v} for p, v in parameters.items()]
 
+    file_open_func = jwst.datamodels.open if return_as_datamodel else fits.open
 
     # Restructuring the keywords dictionary to the MAST syntax
     params = {'columns': '*',
@@ -105,11 +109,11 @@ def get_visit_ta_image(visitid, verbose=True, kind='cal', inst='NIRCam', index=0
             # If that file has been downloaded to this local working dir, open from there
             if verbose:
                 print("Opening file from local path "+local_file_cache_path)
-            ta_hdul = fits.open(local_file_cache_path)
+            ta_hdul = file_open_func(local_file_cache_path)
         else:
             try:
                 # Try to open from MAST (this version only works for public-access files)
-                ta_hdul = fits.open(mast_file_url)
+                ta_hdul = file_open_func(mast_file_url)
             except urllib.error.HTTPError as err:
                 if err.code == 401:  # Unauthorized
                     # Use MAST API to allow retrieval of exclusive access data, if relevant
@@ -119,7 +123,7 @@ def get_visit_ta_image(visitid, verbose=True, kind='cal', inst='NIRCam', index=0
                     mast_obs = astroquery.mast.ObservationsClass(mast_api_token)
                     uri = f"mast:JWST/product/{filename}"
                     mast_obs.download_file(uri, local_path=local_file_cache_path, cache=False)
-                    ta_hdul = astropy.io.fits.open(local_file_cache_path)
+                    ta_hdul = file_open_func(local_file_cache_path)
                 else:
                     raise  # re-raise any errors other than 401 for permissions denied
             if save_localpath:
@@ -335,7 +339,7 @@ def get_ta_reference_point(inst, hdul, ta_expnum=1):
 ########## MULTI INSTRUMENT ##########
 # (Originally written for NIRCam, now generalized)
 
-def main_ta_analysis(visitid, inst='NIRCam', verbose=True,  plot=True, output_plot_dir=".", return_wcs_offsets=False, return_pointing_offsets=False, **kwargs):
+def main_ta_analysis(visitid, inst=None, verbose=True,  plot=True, output_plot_dir=".", return_wcs_offsets=False, return_pointing_offsets=False, **kwargs):
     """ Retrieve a NIRCam or NIRISS target acq image, and analyze TA performance.
 
     See also nrc_ta_comparison
@@ -344,7 +348,7 @@ def main_ta_analysis(visitid, inst='NIRCam', verbose=True,  plot=True, output_pl
     -----------
     visitid : string
         Visit ID. Should be one of the WFSC visits, starting with a NIRCam target acq, or at least
-        some other sort of visit that begins with a NIRCam target acquisition.
+        some other sort of visit that begins with a target acquisition.
     return_wcs_offsets : bool
         return WCS offets, i.e. the offset between where OSS measured the target and where WCS says the target should be
         Incompatible with return_pointing_offsets
@@ -358,6 +362,9 @@ def main_ta_analysis(visitid, inst='NIRCam', verbose=True,  plot=True, output_pl
 
     # Preparation: Get metadata
     visitid = utils.get_visitid(visitid)
+
+    if inst is None:
+        inst = mast.visit_which_instrument(visitid)
     inst = inst.upper()
     siaf = utils.get_siaf(inst)
 
@@ -558,7 +565,7 @@ def main_ta_analysis(visitid, inst='NIRCam', verbose=True,  plot=True, output_pl
             border_mask[:] = 0
             border_mask[imin:imax, imin:imax] = 1
 
-        cen = webbpsf.fwcentroid.fwcentroid(im_obs_clean*border_mask)
+        cen = stpsf.fwcentroid.fwcentroid(im_obs_clean*border_mask)
         if plot:
             if inst=='MIRI':
                 print('Need to update plotting code for subarray calc in full frame image')
@@ -578,7 +585,7 @@ def main_ta_analysis(visitid, inst='NIRCam', verbose=True,  plot=True, output_pl
         else:
             if verbose:
                 print(f"Comparing to local STPSF centroid for TA image {i_ta_image+1}")
-            # if more than 1 image, for the earlier images, or subsequent TACONFIRMs, show the comparison to webbpsf centroids
+            # if more than 1 image, for the earlier images, or subsequent TACONFIRMs, show the comparison to stpsf centroids
             deltapos = (cen[1] - xref,  cen[0] - yref)
             deltapos_type = 'fwcentroid-Intended'
 
@@ -689,7 +696,7 @@ def nrc_ta_comparison(visitid, inst='NIRCam', verbose=True, show_centroids=True,
     im_obs_clean = astropy.convolution.interpolate_replace_nans(im_obs, kernel=np.ones((5,5)))
 
     # Make a matching sim
-    nrc = webbpsf.setup_sim_to_match_file(hdul, verbose=False)
+    nrc = stpsf.setup_sim_to_match_file(hdul, verbose=False)
     opdname = nrc.pupilopd[0].header['CORR_ID'] + "-NRCA3_FP1-1.fits"
     if verbose:
         print(f"Calculating PSF to match that TA image...")
@@ -1016,6 +1023,126 @@ def miri_ta_analysis(visitid,  verbose=True, **kwargs):
     See main_ta_analysis for further docs """
 
     return main_ta_analysis(visitid, inst='MIRI', verbose=verbose, **kwargs)
+
+
+# This is a more comprehensive analysis, looking at the PSF morphology
+def niriss_ta_image_comparison(visitid, verbose=False, **kwargs):
+    """Retrieve a NIRISS target acq image set and compare to a simulation
+
+    Parameters:
+    -----------
+    visitid : string
+        Visit ID. Should be a visit that begins with a NIRISS target acquisition.
+    """
+    import stpsf
+    from misc_jwst.fitting import objfun_stpsf_xyoffset
+
+    # Preparation: Get metadata
+    print("Retrieving TA data...")
+
+    inst='NIRISS'
+
+    # Preparation: Get TA image(s)
+    ta_images = get_visit_ta_image(visitid, inst=inst, **kwargs)
+    if ta_images is None:
+        raise RuntimeError(f"No TA image found for visit {visitid}")
+    elif isinstance(ta_images, astropy.io.fits.HDUList):
+        n_ta_images = 1
+    elif isinstance(ta_images[0], astropy.io.fits.HDUList):
+        n_ta_images = len(ta_images)
+    if verbose:
+        print(f"Found {n_ta_images} TA images for {visitid} ")
+
+    if inst=='NIRISS' and n_ta_images == 3:
+        ta_dithers = [(0,0), (-4, -2), (1, -5)]
+
+    # Image processing: let's pad these so we can shift without wrapping
+
+    shape = ta_images[0]['SCI'].data.shape
+    npad = np.max(np.abs(ta_dithers))
+
+    # Image processing: shift to align, then combine
+    stack = []
+    errstack = []
+
+    for i in range(n_ta_images):
+        padded = np.pad(ta_images[i]['SCI'].data, npad, mode='constant', constant_values=np.nan)
+        dx, dy = ta_dithers[i]
+        stack.append(np.roll(padded, (-dy, -dx), axis=(0,1) ))
+
+        padded_err = np.pad(ta_images[i]['ERR'].data, npad, mode='constant', constant_values=np.nan)
+        errstack.append(np.roll(padded_err, (-dy, -dx), axis=(0,1) ))
+
+    combined = np.nanmean(stack, axis=0)
+    err_mask = np.isfinite(np.asarray(errstack))
+    combined_err = np.sqrt( np.nansum(np.asarray(errstack)**2, axis=0) / np.sum(err_mask, axis=0)**2)
+
+
+
+    # Setup sim instance
+    print("Setting up sim instance...")
+    nis = stpsf.setup_sim_to_match_file(ta_images[0], verbose=True, max_range_ndays=10)
+
+    rmean, rmedian, rsig = astropy.stats.sigma_clipped_stats(combined, sigma=1)
+
+
+    # These could be cutouts from a larger image, if we wanted to generalize
+    cutout_im = combined*1 - rmean
+    cutout_err = combined_err*1
+
+    cutout_im[np.isnan(cutout_im)] = 0
+    cutout_err[np.isnan(cutout_err)] = np.inf
+
+    inv_variance = 1/cutout_err**2       # Inverse variance
+    inv_variance[cutout_err <= 0] = 0
+
+    print("Fitting to optimize position & flux scaling")
+    initial_params = [0,0]
+    args = [nis, cutout_im, inv_variance, False]
+    _res = scipy.optimize.least_squares(objfun_stpsf_xyoffset, initial_params, args=args,
+                     x_scale='jac', method='lm', ftol=1e-3)
+
+
+    psf_aligned = objfun_stpsf_xyoffset(_res.x, nis, cutout_im, inv_variance, True)
+    mock_noise = np.random.randn(*combined.shape) * combined_err
+
+    # PLOT!
+    fig, axes = plt.subplots(figsize=(15, 6), ncols=3, gridspec_kw={'left':0.03, 'right': 0.97, 'bottom': 0.05, 'top': 0.9})
+
+    cmap = matplotlib.cm.viridis
+    cmap.set_bad('gray')
+    cmap_diff = matplotlib.cm.gray
+    cmap_diff.set_bad('gray')
+
+    vmx = np.nanmax(combined)
+    norm=matplotlib.colors.AsinhNorm(vmin=0, vmax=vmx, linear_width=vmx/10000)
+
+    nanmask = np.ones_like(combined)
+    nanmask[np.isnan(combined)] = np.nan
+
+    axes[0].imshow(combined - rmean, norm=norm, cmap=cmap)
+    axes[1].imshow(psf_aligned*nanmask + mock_noise, norm=norm, cmap=cmap)
+
+    axes[2].imshow(combined - rmean - psf_aligned, # - mock_noise,
+                    norm=norm, cmap=cmap)
+                    #   cmap=cmap_diff, norm=matplotlib.colors.Normalize(vmin=-vmx/10, vmax=vmx/10))
+    axes[0].set_title(f"Observed PSF\n{n_ta_images} TA images combined")
+    axes[1].set_title(f"Model PSF + mock noise to match SNR\nUsing OPD {os.path.basename(nis.pupilopd.filename())}")
+    axes[2].set_title("Difference Observed - Model")
+
+
+    for ax in axes:
+        plt.colorbar(ax=ax, mappable=ax.images[0],
+                     orientation='horizontal', pad=0.01, fraction=0.1,
+                    label='[MJy/sr]')
+        ax.set_xticks([])
+        ax.set_yticks([])
+
+    fig.suptitle(f"NIRISS TA image from {visitid} using {nis.filter}, at {ta_images[0][0].header['DATE-BEG'][0:16]}", fontweight='bold')
+
+    outname = f'nis_ta_comparison_{visitid}.pdf'
+    print("==>> "+outname)
+    plt.savefig(outname)
 
 
 
