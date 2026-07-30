@@ -343,7 +343,7 @@ def jwstops_overview(lookback=48*u.hour, date=None):
 
 
 
-def wavefront_plot():
+def wavefront_plot(date=None):
     import stpsf
     import matplotlib.pyplot as plt
     import subprocess
@@ -354,7 +354,21 @@ def wavefront_plot():
     plt.savefig('wavefront_trending_plot.pdf')
     result = subprocess.run(["open", "wavefront_trending_plot.pdf"])
 
+def wavefront_histogram_plot(date=None):
+    import stpsf
+    import matplotlib.pyplot as plt
+    import subprocess
+    import astropy.time, astropy.units
 
+    if date is None:
+        date = astropy.time.Time.now()
+    opdtable = stpsf.mast_wss.retrieve_mast_opd_table()
+    opdtable = stpsf.mast_wss.deduplicate_opd_table(opdtable)
+    stpsf.trending.wfe_histogram_plot(opdtable, start_date = date - 1*astropy.units.year,
+                                      mark_corrections='arrows', max_wfe=120, thresh=75)
+    plt.tight_layout()
+    plt.savefig('wavefront_histogram_plot.pdf')
+    result = subprocess.run(["open", "wavefront_histogram_plot.pdf"])
 
 
 def jwstops_main():
@@ -377,8 +391,9 @@ def jwstops_main():
     parser.add_argument('-d', '--durations',  help='retrieve OSS visit event durations for this visit (within previous week).')
     parser.add_argument('-r', '--range',  default=48.0, help='Set time range in hours forward/back for displaying schedules. (default = 48 hours)')
     parser.add_argument('-f', '--future',  action='store_true', help='Shift time range for displaying schedule plots to bias toward the future. (Default = show 1*range into the past, 0.5*range into the future. This option flips those coefficients.)')
-    parser.add_argument('--visit_date',  help='Manually set date for --visitlog, for cases in which it cannot be automatically determined; or override date for schedule_plot')
+    parser.add_argument('--visit_date',  help='Manually set date for --visitlog, for cases in which it cannot be automatically determined; or override date for schedule_plot or wavefront')
     parser.add_argument('-W', '--wavefront',  action='store_true', help='show most recent wavefront sensing data')
+    parser.add_argument('--wavehist',  action='store_true', help='Show wavefront histogram and timeline over the preceeding year')
 
     args = parser.parse_args()
 
@@ -416,4 +431,6 @@ def jwstops_main():
         schedule_plot(trange=float(args.range)*u.hour, future=args.future, date=args.visit_date)
 
     if args.wavefront:
-        wavefront_plot()
+        wavefront_plot(date=args.visit_date)
+    if args.wavehist:
+        wavefront_histogram_plot(date=args.visit_date)
