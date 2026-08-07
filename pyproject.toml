@@ -17,6 +17,13 @@ requires-python = ">=3.9"
 [tool.setuptools_scm]
 write_to = "misc_jwst/version.py"
 
+[tool.pytest.ini_options]
+markers = [
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')"
+]
+# Skip slow tests by default
+addopts = "-m 'not slow'"
+
 
 [project.scripts]
 jwstops-latest = "misc_jwst.command_line:jwstops_latest"
