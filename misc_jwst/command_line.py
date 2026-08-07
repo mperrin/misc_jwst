@@ -260,7 +260,7 @@ def jwstops_durations(visitid, lookback=7*u.day):
 
         log = engdb.get_ictm_event_log(startdate=start_time)
 
-        visit_table = engdb.visit_script_durations(log, visitid)
+        engdb.visit_script_durations(log, visitid)
     except RuntimeError:
         # visit wasn't within the last week, so let's figure out when it was
         from . import mast
@@ -365,7 +365,7 @@ def wavefront_plot(date=None):
     stpsf.trending.single_measurement_trending_plot(opdtable, row_index=-1, vmax=0.05)
     plt.savefig('wavefront_trending_plot.pdf')
     if _ON_MACOS:
-        subprocess.run(["open", "wavefront_trending_plot.pdf"])
+        subprocess.run(["open", "wavefront_trending_plot.pdf"], check=True)
 
 def wavefront_histogram_plot(date=None):
     import subprocess
@@ -384,7 +384,7 @@ def wavefront_histogram_plot(date=None):
     plt.tight_layout()
     plt.savefig('wavefront_histogram_plot.pdf')
     if _ON_MACOS:
-        subprocess.run(["open", "wavefront_histogram_plot.pdf"])
+        subprocess.run(["open", "wavefront_histogram_plot.pdf"], check=True)
 
 
 def jwstops_main():

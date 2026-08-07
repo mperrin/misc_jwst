@@ -30,18 +30,18 @@ def set_aptpath(path = '/Application`s/APT 2021.2/bin/apt'):
 
 ## Functions to retrieve and download APT files from STScI
 
-def download_apt_xml(progid):
-    r = requests.get(f'http://www.stsci.edu/jwst/phase2-public/{progid}.aptx')
+def download_apt_xml(prog_id):
+    r = requests.get(f'http://www.stsci.edu/jwst/phase2-public/{prog_id}.aptx')
     z = zipfile.ZipFile(BytesIO(r.content))
     #fn = z.filelist[1].filename
-    retval = z.extract(f'{progid}.xml')
+    retval = z.extract(f'{prog_id}.xml')
     print(retval)
 
 
-def download_apt_aptx(progid, redownload=False):
-    outname = f"{progid}.aptx"
+def download_apt_aptx(prog_id, redownload=False):
+    outname = f"{prog_id}.aptx"
     if not os.path.exists(outname) or redownload:
-        r = requests.get(f'http://www.stsci.edu/jwst/phase2-public/{progid}.aptx')
+        r = requests.get(f'http://www.stsci.edu/jwst/phase2-public/{prog_id}.aptx')
         with open(outname,"wb") as handle:
             handle.write(r.content)
         print(f"{outname} downloaded")
@@ -49,17 +49,17 @@ def download_apt_aptx(progid, redownload=False):
         print(f"{outname} file already present.")
 
 
-def download_apt_aptx_and_xml(progid, redownload=False):
+def download_apt_aptx_and_xml(prog_id, redownload=False):
     # Download and save the APT files, and also export their contents to XML
-    outname = f"{progid}.aptx"
+    outname = f"{prog_id}.aptx"
     if not os.path.exists(outname) or redownload:
-        r = requests.get(f'http://www.stsci.edu/jwst/phase2-public/{progid}.aptx')
+        r = requests.get(f'http://www.stsci.edu/jwst/phase2-public/{prog_id}.aptx')
         with open(outname,"wb") as handle:
             handle.write(r.content)
         print(f"{outname} downloaded")
         z = zipfile.ZipFile(BytesIO(r.content))
-        z.extract(f'{progid}.xml')
-        print(f"  and extracted {progid}.xml")
+        z.extract(f'{prog_id}.xml')
+        print(f"  and extracted {prog_id}.xml")
     else:
         print(f"{outname} file already present.")
 
@@ -100,14 +100,14 @@ def parse_special_reqs(filename, verbose=False):
         all_srs[observation_number] = sr_d
     return all_srs
 
-def describe_setup(results, i, sr_info, progid):
+def describe_setup(results, i, sr_info, prog_id):
     """ Convenience helper for printing the handful of parameters we're interested in.
     Quick and dirty; kind of a kludge.
 
     results : output from read_xml
     i : index of observation
     sr_info : output from parse_special_reqs
-    progid : APT program ID number
+    prog_id : APT program ID number
 
     returns a string.
 
@@ -122,40 +122,40 @@ def describe_setup(results, i, sr_info, progid):
     else:
         retval =  results['APTTemplate'][i]
 
-    filenameout = f"jw{progid:05d}{obsid:03d}001_*"
+    filenameout = f"jw{prog_id:05d}{obsid:03d}001_*"
 
     retval= f"{retval:45s}\tGuiding={guidemode:10s}\t{filenameout}"
     return retval
 
 
-def summarize_program(progid):
+def summarize_program(prog_id):
     """ Read in an APT XML file, prepare text file of useful info summary
 
-    progid : APT program ID, e.g. 1158
+    prog_id : APT program ID, e.g. 1158
     """
-    print(progid)
+    print(prog_id)
 
     # Read in the APT XML, using MIRAGE's code for that.
     read_apt_xml = get_read_apt_xml()
     reader = read_apt_xml.ReadAPTXML()
 
-    xmlfn = f'{progid}.xml'
+    xmlfn = f'{prog_id}.xml'
     if not os.path.exists(xmlfn):
-        download_apt_xml(progid)
+        download_apt_xml(prog_id)
 
     try:
         res = reader.read_xml(xmlfn, verbose=False)
     except ValueError:
-        return f"Unsupported template type for {progid}.xml"
+        return f"Unsupported template type for {prog_id}.xml"
     if len(res['Title'])==0:
-        return f"Problem reading {progid}.xml"
+        return f"Problem reading {prog_id}.xml"
 
     # Also read the special requirements info, which MIRAGE doesn't yet do
-    sr_info = parse_special_reqs(f'{progid}.xml', verbose=False)
+    sr_info = parse_special_reqs(f'{prog_id}.xml', verbose=False)
 
     output = ""
     # Record the program title
-    output+="\nAPT {}:  {}\n\n".format(progid, res['Title'][0] )
+    output+="\nAPT {}:  {}\n\n".format(prog_id, res['Title'][0] )
 
     # Generate descriptions of all observations. These will typically be repeated many times,
     # because there are usually multiple exposures per observation.
@@ -167,21 +167,21 @@ def summarize_program(progid):
         if label == prev:
             continue
         prev=label
-        output+=f"\t{label:70s}\t{describe_setup(res, i, sr_info, progid)}\n"
+        output+=f"\t{label:70s}\t{describe_setup(res, i, sr_info, prog_id)}\n"
 
     return output
 
 
-def get_program_obslabels(progid):
+def get_program_obslabels(prog_id):
     """ Read in an APT XML file, prepare text file of useful info summary
 
-    progid : APT program ID, e.g. 1158
+    prog_id : APT program ID, e.g. 1158
     """
-    print(progid)
+    print(prog_id)
 
-    xmlfn = f'{progid}.xml'
+    xmlfn = f'{prog_id}.xml'
     if not os.path.exists(xmlfn):
-        download_apt_xml(progid)
+        download_apt_xml(prog_id)
 
     # Read in the APT XML, using MIRAGE's code for that.
     read_apt_xml = get_read_apt_xml()
@@ -189,12 +189,12 @@ def get_program_obslabels(progid):
     try:
         res = reader.read_xml(xmlfn, verbose=False)
     except ValueError:
-        return f"Unsupported template type for {progid}.xml"
+        return f"Unsupported template type for {prog_id}.xml"
     if len(res['Title'])==0:
-        return f"Problem reading {progid}.xml"
+        return f"Problem reading {prog_id}.xml"
 
     # Also read the special requirements info, which MIRAGE doesn't yet do
-    #sr_info = parse_special_reqs('{}.xml'.format(progid), verbose=False)
+    #sr_info = parse_special_reqs('{}.xml'.format(prog_id), verbose=False)
 
     obslabels = {}
     obstemplates = {}
@@ -221,21 +221,21 @@ def export_timing_json(prog_id, redo=False):
         import subprocess
         subprocess.run([aptpath, '--nogui', '-export', 'timing.json', f'{prog_id}.aptx'])
 
-def timing_summary_from_json(progid):
+def timing_summary_from_json(prog_id):
     # Read info from the APT exported .timing.json files and display summary
-    fn = f'{progid}.timing.json'
+    fn = f'{prog_id}.timing.json'
 
-    print(f"Timing summary for APT {progid}")
+    print(f"Timing summary for APT {prog_id}")
     with open(fn) as file:
         timedata = json.load(file)
-    print(f"Total charged in APT for program {progid}: {timedata['charged_time']} hours")
+    print(f"Total charged in APT for program {prog_id}: {timedata['charged_time']} hours")
 
     tot_charged = 0
 
     for i, obs in enumerate(timedata['observations']):
         print(f'Obs {obs["id"]:2}: Charged {obs["charged_duration_seconds"]:4} s\t({obs["template"]}, {obs["number_of_visits"]} visit)')
         tot_charged += obs["charged_duration_seconds"]
-    print(f"\tSum of observations in APT for program {progid}: {tot_charged} s = \t{tot_charged/3600:.02f} hours\n")
+    print(f"\tSum of observations in APT for program {prog_id}: {tot_charged} s = \t{tot_charged/3600:.02f} hours\n")
 
 def get_obs_description(res, desired_obsid):
     # helper function for the awkward task of getting observation description from the parsed XML
@@ -244,22 +244,22 @@ def get_obs_description(res, desired_obsid):
     except:
         return ""
 
-def timing_summary_from_json_to_excel(progid, workbook_in=None, include_descriptions=True):
+def timing_summary_from_json_to_excel(prog_id, workbook_in=None, include_descriptions=True):
     """ You can use this if you need to customize which observations are included in your sums, for instance if you have some visitions that are on hold or contingency and should not be included. This outputs Excel files. Edit the spreadsheet and set the "Include" column to 'N' for observations to skip from the sums
     """
     import xlsxwriter
-    fn = f'{progid}.timing.json'
+    fn = f'{prog_id}.timing.json'
     # Create a workbook and add a worksheet.
     if workbook_in is not None:
         workbook = workbook_in
     else:
-        workbook = xlsxwriter.Workbook(f'timing_{progid}.xlsx')
-    worksheet = workbook.add_worksheet(str(progid))
+        workbook = xlsxwriter.Workbook(f'timing_{prog_id}.xlsx')
+    worksheet = workbook.add_worksheet(str(prog_id))
     bold = workbook.add_format({'bold': True})
 
 
     worksheet.write(0, 0, "Timing summary for APT:", bold)
-    worksheet.write(0, 2, progid, bold)
+    worksheet.write(0, 2, prog_id, bold)
     for i, header in enumerate(['Obs', 'Total Charged (s)', 'Template', 'Include in sum?']):
         worksheet.write(1,i,header)
 
@@ -272,7 +272,7 @@ def timing_summary_from_json_to_excel(progid, workbook_in=None, include_descript
     if include_descriptions and prog_id not in skip_programs:
         read_apt_xml = get_read_apt_xml()
         reader = read_apt_xml.ReadAPTXML()
-        res = reader.read_xml(f'{progid}.xml', verbose=False)
+        res = reader.read_xml(f'{prog_id}.xml', verbose=False)
 
     for i, obs in enumerate(timedata['observations']):
         worksheet.write(i+2, 0, obs["id"])
@@ -302,4 +302,4 @@ def timing_summary_from_json_to_excel(progid, workbook_in=None, include_descript
 
     if workbook_in is None:
         workbook.close()
-        print(f"Saved to timing_{progid}.xlsx")
+        print(f"Saved to timing_{prog_id}.xlsx")

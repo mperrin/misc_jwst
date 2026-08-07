@@ -64,7 +64,7 @@ def jwst_keywords_query(instrument, columns=None, more_columns=None, all_columns
         print('added more columns: '+more_columns)
         print(columns)
 
-    keywords = dict()
+    keywords = {}
 
     for kw in kwargs:
         val = kwargs[kw]
@@ -399,7 +399,7 @@ def summarize_jwst_observations(targname, radius='30s', exclude_ta=True):
             radius=radius
             )
 
-    has_obs = dict()
+    has_obs = {}
 
     for row in obstable:
         mode = row['instrument_name']
@@ -409,7 +409,7 @@ def summarize_jwst_observations(targname, radius='30s', exclude_ta=True):
             continue
 
         if mode not in has_obs:
-            has_obs[mode] = dict()
+            has_obs[mode] = {}
         if proposal not in has_obs[mode]:
             has_obs[mode][proposal] = set()
         has_obs[mode][proposal].add(filters)
@@ -574,7 +574,7 @@ def summarize_jwst_observations(targname, radius='10s', exclude_ta=True):
             radius=radius
             )
 
-    has_obs = dict()
+    has_obs = {}
 
     for row in obstable:
         mode = row['instrument_name']
@@ -586,7 +586,7 @@ def summarize_jwst_observations(targname, radius='10s', exclude_ta=True):
             continue
 
         if mode not in has_obs:
-            has_obs[mode] = dict()
+            has_obs[mode] = {}
         if proposal not in has_obs[mode]:
             has_obs[mode][proposal] = set()
         has_obs[mode][proposal].add(filters)

@@ -83,7 +83,7 @@ def find_relevant_guiding_file(sci_filename, verbose=True):
         if is_segmented[i]:
             guide_timestamp_parts[i] = guide_timestamp_parts[i].split('-')[0]
     guide_timestamps = np.asarray(guide_timestamp_parts, int)
-    t_beg = astropy.time.Time(sci_hdul[0].header['DATE-BEG'])
+    #t_beg = astropy.time.Time(sci_hdul[0].header['DATE-BEG'])
     t_end = astropy.time.Time(sci_hdul[0].header['DATE-END'])
     obs_end_time = int(t_end.strftime('%Y%j%H%M%S'))
 

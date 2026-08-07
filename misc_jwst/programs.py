@@ -148,7 +148,7 @@ def scrape_accepted_gto_programs(cycle=1,
 
 def hours_by_cycle():
 
-    go_programs = dict()
+    go_programs = {}
 
     for cycle in range(1,_CURRENT_CYCLE+1):
 
@@ -158,7 +158,7 @@ def hours_by_cycle():
         hours = np.sum([t['Prime_hours'].sum() for t in tab_cy])
         print(f"GO Cycle {cycle}:\t{hours:.1f}")
 
-    gto_programs = dict()
+    gto_programs = {}
 
     for cycle in [1,2,3]:
 

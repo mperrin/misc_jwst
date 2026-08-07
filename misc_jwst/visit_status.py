@@ -195,7 +195,7 @@ def wfsc_program_status(cycle=misc_jwst.programs._CURRENT_CYCLE, verbose=True):
 
     wf_pids = get_wfsc_program_pids(cycle)
 
-    tables = dict()
+    tables = {}
     for pid in wf_pids:
         tables[pid] = query_program_status_form(pid)
         if verbose:

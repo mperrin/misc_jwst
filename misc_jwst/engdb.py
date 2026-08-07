@@ -444,7 +444,6 @@ def extract_oss_event_msgs_for_visit(eventlog, selected_visit_id, ta_only=False,
             if msg[-5:] == 'ERROR':
                 script = msg.split(':')[2]
                 vend = 'T'.join(time.split())[:-3]
-                dur = datetime.fromisoformat(vend) - datetime.fromisoformat(vstart)
                 note = f'Halt in {script}'
                 in_selected_visit = False
         elif in_selected_visit and msg.startswith('*'): # this string is used to mark the start and end of TA sections
@@ -585,7 +584,7 @@ def visit_script_durations(event_table, selected_visit_id, verbose=True, return_
     total_visit_duration = visittable[-1]['MJD'] - visittable[0]['MJD']
 
 
-    summary_durations = dict()
+    summary_durations = {}
 
     def vprint(*args):
         if verbose: print(*args)
@@ -594,8 +593,8 @@ def visit_script_durations(event_table, selected_visit_id, verbose=True, return_
 
     vprint(f"OSS Script Durations for {selected_visit_id} (total duration: {total_visit_duration*86400:.1f} s)")
 
-    starts = dict()
-    stops = dict()
+    starts = {}
+    stops = {}
     for row in scriptevents:
         if row['Message'].startswith("Script activated: "):
             key = row['Message'].split()[2]

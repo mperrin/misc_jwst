@@ -114,7 +114,7 @@ def do_one_stage2(inputfilename, overwrite=False, output_dir='.', spec=False, l2
     """
 
     if l2_param_overrides is None:
-        l2_param_overrides = dict()
+        l2_param_overrides = {}
 
     outfile = os.path.join(output_dir, os.path.basename(inputfilename).replace("_rate.fits", "_cal.fits"))
 
