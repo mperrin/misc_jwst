@@ -354,7 +354,7 @@ def jwstops_overview(lookback=48*u.hour, date=None):
 
 
 
-def wavefront_plot(date=None):
+def wavefront_plot(date=None, auto_open=True):
     import subprocess
 
     import matplotlib.pyplot as plt
@@ -364,10 +364,10 @@ def wavefront_plot(date=None):
     #stpsf.mast_wss.download_all_opds(opdtable)
     stpsf.trending.single_measurement_trending_plot(opdtable, row_index=-1, vmax=0.05)
     plt.savefig('wavefront_trending_plot.pdf')
-    if _ON_MACOS:
+    if _ON_MACOS and auto_open:
         subprocess.run(["open", "wavefront_trending_plot.pdf"], check=True)
 
-def wavefront_histogram_plot(date=None):
+def wavefront_histogram_plot(date=None, auto_open=True):
     import subprocess
 
     import astropy.time
@@ -383,7 +383,7 @@ def wavefront_histogram_plot(date=None):
                                       mark_corrections='arrows', max_wfe=120, thresh=75)
     plt.tight_layout()
     plt.savefig('wavefront_histogram_plot.pdf')
-    if _ON_MACOS:
+    if _ON_MACOS and auto_open:
         subprocess.run(["open", "wavefront_histogram_plot.pdf"], check=True)
 
 

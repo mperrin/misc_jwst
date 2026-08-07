@@ -35,7 +35,7 @@ def test_miri_lrs_slitless_ta():
     misc_jwst.target_acq_tools.miri_ta_analysis('V01529005001')
 
 
-def test_miri_lrs_ta():
+def test_miri_mrs_ta():
     misc_jwst.target_acq_tools.miri_ta_analysis('V05299011001')
 
 

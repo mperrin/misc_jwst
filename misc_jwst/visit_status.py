@@ -39,8 +39,8 @@ def retrieve_status_tables(pid):
     status_tables=[]
 
     # Find all tables in the HTML output
-    for table in soup.findAll("table"):
-        if table.findParent("table") is None:
+    for table in soup.find_all("table"):
+        if table.find_parent("table") is None:
             from io import StringIO
             status_tables.append(pd.read_html(StringIO(str(table)), header=0 )[0])
 

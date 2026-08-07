@@ -331,7 +331,7 @@ def get_ta_reference_point(inst, hdul, ta_expnum=1):
         # What is the location of the reference point? 
         # For NIRSpec this slightly tricker since the aperture only has V2V3 ref defined, and
         # we need to convert that to detector coordinates. We can do that with the gWCS.
-        model = jwst.datamodels.open(hdul)
+        model = utils.open_hdulist_as_datamodel(hdul)
         ap = pysiaf.Siaf('NIRSpec')[model.meta.aperture.name]
         transform = model.meta.wcs.get_transform('v2v3', 'detector')  # Transform from V frame to subarray used in this obs
         xref, yref = transform(ap.V2Ref, ap.V3Ref)
@@ -1489,7 +1489,7 @@ def nirspec_wata_ta_analysis(visitid, verbose=True, show_centroids=True):
         hdul, ax, norm, cmap, bglevel = show_ta_img(visitid, ax=ax, return_handles=True, ta_expnum=i_ta_image+1, inst='NIRSpec',
                                                    mark_reference_point=False, verbose=True, save_localpath=True)
 
-        model = jwst.datamodels.open(ta_files[i_ta_image])
+        model = utils.open_hdulist_as_datamodel(ta_files[i_ta_image])
 
         target_coords = astropy.coordinates.SkyCoord(model.meta.target.ra, model.meta.target.dec, frame='icrs', unit=u.deg)
         # target coordinates at epoch, as computed from APT

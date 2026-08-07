@@ -137,11 +137,16 @@ def open_hdulist_as_datamodel(hdulist):
     import stdatamodels
     from packaging.version import Version
 
+    if isinstance(hdulist, jwst.datamodels.JwstDataModel):
+        # This function has been (unnecessarily!) called with something that's already a DataModel
+        # so just return it
+        return hdulist  # not actually a hdulist... ;-)
+
     if Version(stdatamodels.__version__) < Version("6.0"):
         return jwst.datamodels.open(hdulist)
     else:
         # This version doesn't support hdulists to open directly
-        # so we have to instantiate the data model class directly. 
+        # so we have to instantiate the data model class directly.
         # First, figure out from the header which data model class we want
         from stdatamodels.jwst import datamodels
         model_type = hdulist[0].header.get("DATAMODL")
@@ -149,10 +154,3 @@ def open_hdulist_as_datamodel(hdulist):
         model = cls(hdulist)
 
         return model
-#
-#        cls = getattr(datamodels, hdul[0].header.get("DATAMODL")datamodels.JwstDataModel); model = cls(hdul)
-#        buf = io.BytesIO()
-#        hdulist.writeto(buf)
-#        buf.seek(0)
-#        return jwst.datamodels.open(buf)
-#
