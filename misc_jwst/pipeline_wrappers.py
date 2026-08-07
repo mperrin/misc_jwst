@@ -71,12 +71,14 @@ def do_one_stage1(inputfilename, overwrite=False, output_dir='.', l1_param_overr
     return outfile
 
 
-def do_stage2image(filenamelist, overwrite=False, output_dir='.', l2_param_overrides=None, spec=False, bgfiles=None):
+def do_stage2(filenamelist, overwrite=False, output_dir='.', l2_param_overrides=None, spec=False, bgfiles=None):
     """Run pipeline stage 2, with some wrapper customizations, for a list of files
 
     Returns list of output files
     """
     outputs = []
+
+    print(f"Running stage2 in {'SPEC' if spec else 'IMAGE'} mode. Use spec parameter True/False to change this.")
 
     for filename in filenamelist:
         outputs.append(do_one_stage2(filename, overwrite=overwrite, output_dir=output_dir,
@@ -229,15 +231,20 @@ def make_l3_association(filelist, asn_description=None, spec=False):
         filt = get_instrument_filter(model)
         progid = model.meta.observation.program_number
         obs = model.meta.observation.observation_number
+        exptype = model.meta.exposure.type
 
     optional_description = '' if asn_description is None else '_'+asn_description
 
     asn_name = f'jw{progid}_o{obs}_{inst.lower()}_{filt.lower()}{optional_description}.json'
 
     if spec:
-        if inst=='NIRSpec':
-            # note, 'filt' will contain both filter and grating concatenated
-            product_name = f'jw{progid}-{obs}_{{source_id}}_{inst}_{filt}-{{slit_name}}'
+        if inst.upper()=='NIRSPEC':
+            if exptype == 'NRS_IFU':
+                product_name = f'jw{progid}-{obs}_{inst}_{filt}{optional_description}'
+            else:
+                # need to include source ID and slit name for the fixed slits
+                # note, 'filt' will contain both filter and grating concatenated
+                product_name = f'jw{progid}-{obs}_{{source_id}}_{inst}_{filt}-{{slit_name}}'
         else:
             # MIRI
             product_name = f'jw{progid}-{obs}_{inst}_{{slit_name}}'

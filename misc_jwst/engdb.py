@@ -407,8 +407,13 @@ def extract_oss_event_msgs_for_visit(eventlog, selected_visit_id, ta_only=False,
     messages = []
     if verbose:
         print(f"\tSearching for visit: {selected_visit_id}")
+
+    # back compatibility: handle logs either with colname 'Message' or 'EVENT_MSG'
+    # This allows eventlog either from get_ictm_event_log or get_oss_log_messages
+    msg_colname = 'Message' if 'Message' in eventlog.colnames else 'EVENT_MSG'
+    time_colname = 'Time' if 'Time' in eventlog.colnames else 'TIME'
     for row in eventlog:
-        msg, time = row['Message'], row['Time']
+        msg, time = row[msg_colname], row[time_colname]
 
         if in_selected_visit and ((not ta_only) or in_ta) :
             if verbose:

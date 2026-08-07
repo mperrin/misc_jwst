@@ -43,7 +43,7 @@ _ta_dither_sign = {'NRCALONG': [1, -1],
 
 @functools.lru_cache
 def get_visit_ta_image(visitid, verbose=True, kind='cal', inst='NIRCam', index=0, localpath=None, save_localpath=False, local_directory="./",
-                       return_as_datamodel=False):
+                       return_as_datamodel=False, **kwargs):
     """Retrieve from MAST the NIRCam target acq image for a given visit.
 
     This retrieves an image (or images) from MAST and returns it as a HDUList variable
@@ -779,11 +779,11 @@ def nrc_ta_comparison(visitid, inst='NIRCam', verbose=True, show_centroids=True,
             oss_centroid_text = ""
 
         ### WEBBPSF CENTROIDS ###
-        cen = webbpsf.fwcentroid.fwcentroid(im_obs_clean*border_mask)
+        cen = stpsf.fwcentroid.fwcentroid(im_obs_clean*border_mask)
         axes[0].scatter(cen[1], cen[0], color='red', marker='+', s=50)
-        axes[0].text(cen[1], cen[0], '  webbpsf', color='red', verticalalignment='center')
+        axes[0].text(cen[1], cen[0], '  stpsf', color='red', verticalalignment='center')
 
-        axes[0].text(0.95, 0.10, oss_centroid_text+f'\n webbpsf measure_centroid: {cen[1]:.2f}, {cen[0]:.2f}',
+        axes[0].text(0.95, 0.10, oss_centroid_text+f'\n stpsf measure_centroid: {cen[1]:.2f}, {cen[0]:.2f}',
                      horizontalalignment='right', verticalalignment='bottom',
                      transform=axes[0].transAxes,
                      color='white')
@@ -951,16 +951,16 @@ def nrc_ta_get_wcs_offset(visitid, inst='NIRCam', verbose=True, **kwargs):
             border_mask[:, :nm] = 0
             border_mask[:, -nm:] = 0
 
-            cen = webbpsf.fwcentroid.fwcentroid(im_obs_clean*border_mask)
+            cen = stpsf.fwcentroid.fwcentroid(im_obs_clean*border_mask)
             axes[i_ta_image].scatter(cen[1], cen[0], color='red', marker='+', s=50)
-            axes[i_ta_image].text(cen[1], cen[0], '  webbpsf', color='red', verticalalignment='center')
+            axes[i_ta_image].text(cen[1], cen[0], '  stpsf', color='red', verticalalignment='center')
 
             if i_ta_image == show_oss_for_image:
                 # For this image, we have an OSS centroid and can compare to that
                 deltapos = (oss_cen_sci_pythonic[0] - xref,  oss_cen_sci_pythonic[1] - yref)
                 deltapos_type = 'OSS - Intended'
             else:
-                # if more than 1 image, for the earlier images, or subsequent TACONFIRMs, show the comparison to webbpsf centroids
+                # if more than 1 image, for the earlier images, or subsequent TACONFIRMs, show the comparison to stpsf centroids
                 deltapos = (cen[1] - xref,  cen[0] - yref)
                 deltapos_type = 'fwcentroid-Intended'
 
@@ -1081,7 +1081,7 @@ def niriss_ta_image_comparison(visitid, verbose=False, **kwargs):
 
     # Setup sim instance
     print("Setting up sim instance...")
-    nis = stpsf.setup_sim_to_match_file(ta_images[0], verbose=True, max_range_ndays=10)
+    nis = stpsf.setup_sim_to_match_file(ta_images[0], verbose=True, **kwargs)
 
     rmean, rmedian, rsig = astropy.stats.sigma_clipped_stats(combined, sigma=1)
 

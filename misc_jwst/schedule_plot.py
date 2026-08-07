@@ -355,6 +355,7 @@ def schedule_plot(trange = 1*u.day, open_plot=True, verbose=True, future=False, 
                     pstart, pend = row['start_time'], row['end_time']
 
 
+                #print('sched', parallel_visit, p_mode, get_edgecolor(p_mode))
                 #if i_parallel == 0:
                 #    print(parallel_visit, pheight, poffset, 0.6 + i_parallel*(pheight) + poffset, 0.06 + poffset - pheight/2)
                 draw_box(pstart, pend, 0.6 + i_parallel*(pheight) + poffset, pheight, ax=axes[0],
@@ -480,15 +481,17 @@ def schedule_plot(trange = 1*u.day, open_plot=True, verbose=True, future=False, 
     # - sun pitch, sun roll
     # - data volume onboard
     table_ssr = misc_jwst.engdb.get_mnemonic('SF_ZSSRFREE', startdate=tstart.isot, enddate=tend.isot)
-    table_ssr['Time'] = astropy.time.Time(table_ssr['Time'])
-    ssr_size =  62093134
-    table_ssr['SSR_FRAC_USED'] = (ssr_size - table_ssr['SF_ZSSRFREE'])/ssr_size
-    axes[2].plot(table_ssr['Time'].plot_date, table_ssr['SSR_FRAC_USED'], color='Magenta', label='SSR Storage Used')
+    if len(table_ssr['Time']) > 0:
+        table_ssr['Time'] = astropy.time.Time(table_ssr['Time'])
+        ssr_size =  62093134
+        table_ssr['SSR_FRAC_USED'] = (ssr_size - table_ssr['SF_ZSSRFREE'])/ssr_size
+        axes[2].plot(table_ssr['Time'].plot_date, table_ssr['SSR_FRAC_USED'], color='Magenta', label='SSR Storage Used')
 
     # - momentum stored
     table_momentum = misc_jwst.engdb.get_mnemonic('SA_ZMOMMAG', startdate=tstart.isot, enddate=tend.isot)
-    table_momentum['Time'] = astropy.time.Time(table_momentum['Time'])
-    plt.plot(table_momentum['Time'].plot_date, table_momentum['SA_ZMOMMAG']/MOMENTUM_MAX, color='teal', label='Stored Momentum')
+    if len(table_momentum['Time']) > 0:
+        table_momentum['Time'] = astropy.time.Time(table_momentum['Time'])
+        plt.plot(table_momentum['Time'].plot_date, table_momentum['SA_ZMOMMAG']/MOMENTUM_MAX, color='teal', label='Stored Momentum')
 
     if os.path.exists(_pps_attprofile_path):  # only accessible if on VPN or ST internal network
         attplan = get_attplan_by_date(start_time)

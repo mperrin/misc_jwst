@@ -8,6 +8,7 @@ import astropy.time
 import datetime
 import astropy.table
 import astropy.coordinates as c, astropy.units as u
+import misc_jwst.programs
 
 
 def parse_plan_window(text):
@@ -165,14 +166,32 @@ def summarize_status(result_table):
     for code in statcodes:
         print(f"  {code}:\t{(result_table['Status']==code).sum()} visits")
 
-def wfsc_program_status(verbose=True):
+
+def get_wfsc_program_pids(cycle=None):
+
+    cycle_pids = {1: [2586, 2724, 2725, 2726],
+                  2: [4500, 4501, 4502, 4503, 4504, 4505, 4506, 4507, 4508, 4509],
+                  3: [6689, 6690, 6691, 6692, 6693, 6694, 6695, 6696, 6697, 6698],
+                  4: [4430, 7052, 7126, 7127, 7344, 7464],
+                  }
+    if cycle in cycle_pids:
+        return cycle_pids[cycle]
+    elif cycle=='all':
+        import itertools
+        pids = [cycle_pids[c] for c in range(1, misc_jwst.programs._CURRENT_CYCLE+1)]
+        return list(itertools.chain(*pids))
+    else:
+        raise RuntimeError("Specify a numbered cycle, or 'all'")
+
+
+
+def wfsc_program_status(cycle=misc_jwst.programs._CURRENT_CYCLE, verbose=True):
     """Check all 4 cycle 1 WFSC programs to find how many visits for each
     target have been used, and in which ways.
- 
+
     Returns an astropy table with the summary"""
- 
- 
-    wf_pids = [2586, 2724, 2725, 2726]
+
+    wf_pids = get_wfsc_program_pids(cycle)
 
     tables = dict()
     for pid in wf_pids:
@@ -185,12 +204,12 @@ def wfsc_program_status(verbose=True):
     # Merged list of all targets, and all available status codes
     target_list = list(np.concatenate([tables[pid]['Target(s)'] for pid in tables]))
 
-    statcodes = ['Archived', 'Executed', 'Scheduled', 'Scheduling', 'Skipped', 'Withdrawn']
+    statcodes = ['Archived', 'Executed', 'Flight Ready', 'Scheduled', 'Scheduling', 'Skipped', 'Withdrawn']
 
 
     unique_targets = list(set(target_list))
     unique_targets.sort()
- 
+
     # Scan through all those tables and extract visit status into a nested dict
     targ_summary_dict = { targ: {s:0 for s in statcodes} for targ in unique_targets}
     for table in tables.values():
@@ -208,17 +227,20 @@ def wfsc_program_status(verbose=True):
     return target_summary
 
 
-def plot_used_wfsc_targets(target_summary):
+def plot_used_wfsc_targets(cycle=misc_jwst.programs._CURRENT_CYCLE):
     """Plot on the sky which WFS stars have been used"""
+
+    target_summary = wfsc_program_status(cycle, verbose=False)
 
     used = 5 - target_summary['Scheduling'] - target_summary['Withdrawn']
 
-    radecs = [(f"{t[6:8]} {t[8:10]} {int(t[10:14])/100} {t[14:17]} {t[17:19]} {int(t[19:23])/200}") for t in target_summary['Target(s)']]
+    # Parse out coordinates from 2MASS obj names, like "2MASS-00101637-0844533	"
+    radecs = [(f"{t[6:8]} {t[8:10]} {int(t[10:14])/100} {t[14:17]} {t[17:19]} {int(t[19:22])/100}") for t in target_summary['Target(s)']]
     coords = c.SkyCoord(radecs, unit=(u.hourangle, u.deg))
 
     plt.figure(figsize=(16,9))
     ax = plt.gcf().add_subplot( projection='mollweide')
-    plt.title(f"Cycle 1 WFSC Target Usage\n[Shown on ICRS RA, Dec. coords]\n")
+    plt.title(f"Cycle {cycle} WFSC Target Usage\n[Shown on ICRS RA, Dec. coords]\n")
 
     plt.xticks(ticks=np.radians([-120, -60, 0, 60, 120, 180]),
                    labels=['8$^h$', '4$^h$', '0$^h$', '20$^h$', '16$^h$', '12$^h$'], alpha=0.7)

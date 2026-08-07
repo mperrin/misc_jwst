@@ -133,6 +133,7 @@ def find_visit_guiding_files(visitid, guidemode='FINEGUIDE', verbose=True, autod
     visitid = misc_jwst.utils.get_visitid(visitid)  # handle either input format, VPPPPPOOOVVV or PPPP:O:V
     progid = visitid[1:6]
     obs = visitid[6:9]
+    vis = visitid[9:12]
 
     if guidemode.upper()=='ID':
         exp_type = 'FGS_ID-IMAGE'
@@ -152,6 +153,7 @@ def find_visit_guiding_files(visitid, guidemode='FINEGUIDE', verbose=True, autod
     keywords = {
     'program': [progid]
     ,'observtn': [obs]
+    ,'visit': [vis]
     ,'exp_type': [exp_type]
     }
 
@@ -253,7 +255,7 @@ def find_all_visit_guiding_files(visitid, verbose=False, exclude_stacked=True, a
     'program': [progid]
     ,'observtn': [obs]
     #'exp_type': [exp_type]
-    #,'visit': [vis]
+    ,'visit': [vis]
     }
 
     params = {
@@ -310,7 +312,7 @@ def find_all_visit_guiding_files(visitid, verbose=False, exclude_stacked=True, a
 
 
 def guiding_performance_plot(sci_filename=None, visitid=None, verbose=True, save=False, yrange=None,
-                             time_range_fraction=None):
+                             time_range_fraction=None, is_moving_target=False):
     """Generate a plot showing the guiding jitter during an exposure or visit
 
 
@@ -323,7 +325,8 @@ def guiding_performance_plot(sci_filename=None, visitid=None, verbose=True, save
         import misc_jwst.utils
         visitid = misc_jwst.utils.get_visitid(visitid)  # handle either input format, VPPPPPOOOVVV or PPPP:O:V
         visit_mode = True
-        gs_fns = find_visit_guiding_files(visitid, verbose=verbose)
+        gs_fns = find_visit_guiding_files(visitid, verbose=verbose,
+                                          guidemode='TRACK' if is_moving_target else 'FINEGUIDE')
     else:
         visit_mode = False
         gs_fns = find_relevant_guiding_file(sci_filename)
@@ -459,8 +462,14 @@ def guiding_performance_plot(sci_filename=None, visitid=None, verbose=True, save
     else:
         # Annotate start of each FG file
         for i, gs_fn in enumerate(gs_fns):
-            start_time = dither_times[i-1] if i>0 else ptimes.min()
-            axes[0].text(start_time.plot_date, 1.5e-2, os.path.basename(gs_fn), fontsize='x-small', clip_on=True)
+            try:
+                start_time = dither_times[i-1] if ((i>0) and (len(dither_times)>1)) else ptimes.min()
+                axes[0].text(start_time.plot_date, 1.5e-2, os.path.basename(gs_fn), fontsize='x-small', clip_on=True)
+            except IndexError:
+                # gracefully handle case where there are more gs_fns than the number of inferred dithers, typically for segmented files
+                # where this code doesn't yet infer the start times correctly
+                print(f"warning, this code doesn't yet figure out how to annotate start time for file {gs_fn}")
+
         # Mark dithers with vertical lines
         for dithertime in dither_times:
            for ax in axes:
@@ -765,7 +774,12 @@ def guiding_performance_jitterball(sci_filename, visitid=None, gs_filename=None,
         scattercmap = misc_jwst.utils.colormap_viridis_white_background()
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")  # scatter_density may emit warnings about NaNs; we don't care. 
-            ax.scatter_density(xoffsets, yoffsets, alpha = 0.8, cmap=scattercmap)
+            try:
+                ax.scatter_density(xoffsets, yoffsets, alpha = 0.8, cmap=scattercmap)
+            except ValueError:
+                # ad hoc - while debugging issues plotting for 6607:40 ...
+                print("ValueError on scatter density")
+                print(xoffsets, yoffsets)
     else:
         # otherwise use regular scatterplot
         ax.scatter(xoffsets, yoffsets, alpha = 0.8, marker='+')
@@ -1118,6 +1132,52 @@ def show_all_gs_images(filenames, guidemode='ID', orientation='raw'):
     for extra_ax in axesf[i+1:]:
         extra_ax.set_axis_off()
 
+def plot_moving_target_track_path(filename, figsize=(8,8), ax=None):
+    """ For moving targets, plot the path the TRACK subarray takes as it moves across the detector.
+    """
+    model = jwst.datamodels.open(filename)
+
+    track_subarray_table = astropy.table.Table(model.track_sub_table)
+
+    boxsize= 32 # always true for Track mode
+    xcens = track_subarray_table['x_corner'] + track_subarray_table['x_size']/2
+    ycens = track_subarray_table['y_corner'] + track_subarray_table['y_size']/2
+
+    # draw the center of the subarray across the detector
+    mask = np.zeros((2048, 2048))
+    mask[np.asarray(ycens, int), np.asarray(xcens, int)] = 1
+
+
+    from astropy.convolution import convolve_fft, Box2DKernel
+    # Select all pixels that are in the subarray path at least once
+    mask2 = convolve_fft(mask, np.ones((32, 32)), normalize_kernel=False) > 0.5
+
+    if ax is None:
+        plt.figure(figsize=figsize)
+        ax = plt.gca()
+
+    ax.imshow(mask2, interpolation='nearest', vmax=2, cmap = matplotlib.cm.viridis)
+    ax.set_title(os.path.basename(filename))
+
+    for row in [track_subarray_table[0], track_subarray_table[-1]]:
+        ax.text(row['x_corner'], row['y_corner'], row['observatory_time'], color='white',
+               horizontalalignment = 'right' if row['x_corner'] > 1024 else 'left')
+
+
+    orientation='raw'
+
+    ax.text(0.01, 0.99, f'{model.meta.instrument.detector}\nTRACK subarray location\nfrom {model.meta.observation.date_beg[:-4]} to {model.meta.observation.date_end[:-4]}',
+            color='yellow',
+            transform=ax.transAxes,
+            verticalalignment='top')
+    if orientation=='raw':
+        ax.text(0.99, 0.99, f'detector raw orientation',
+            color='yellow',
+            transform=ax.transAxes,
+            verticalalignment='top', horizontalalignment='right')
+    ax.text(0.01, 0.01, f'Track subarray moved over {mask2.sum() / mask2.size * 100:.1f}% of detector pixels',
+            color='yellow',
+            transform=ax.transAxes,)
 
 def retrieve_and_display_id_images(sci_filename=None, progid=None, obs=None, visit=1, visitid=None, save=True, save_dpi=150):
     """ Top-level routine to retrieve and display FGS ID images for a given visit
@@ -1407,14 +1467,25 @@ def visit_guiding_sequence(visitid, verbose=True, include_performance=True):
                    'Time Start'] - 2 * astropy.units.hour  # guess, padded more than enough for slew times
     logstop = guiding_file_table[-1]['Time End'] + 10 * astropy.units.minute  # guess
 
+
+    print(f"Retrieving OSS log guiding messages for {visitid}")
     log = misc_jwst.engdb.get_ictm_event_log(startdate=logstart.isot, enddate=logstop.isot)
 
     # Extract just the OSS log messages for FGS events during that visit
     visit_log_table = misc_jwst.engdb.eventtable_extract_visit(log, visitid, verbose=False)
     fgs_log_table = visit_log_table[[('FGS' in m) for m in visit_log_table['Message']]]
 
+#    for row in fgs_log_table:
+#        print(row, row['Message'].startswith("Script activated"), row['Message'].endswith('FGSMTMAIN'))
+
+    is_moving_target_visit = np.any([(row['Message'].startswith("Script activated") and row['Message'].endswith('FGSMTMAIN')) for row in fgs_log_table])
+
+
+
     # Cast Time column to astropy Time object
     fgs_log_table['Time'] = astropy.time.Time(fgs_log_table['Time'])
+
+    print("Is moving target?", is_moving_target_visit)
 
     ### Iterate over files and OSS log messages to print in an interspersed sequence
 
@@ -1542,19 +1613,22 @@ def visit_guiding_sequence(visitid, verbose=True, include_performance=True):
             #      and accumulate sci exp times for possible use in jitterball plots during FG, below
             already_plotted_exptimes_start = set()
             if exposure_table is not None:
-                this_guide_subset = (exposure_table['date_beg_mjd'] > time) & (exposure_table['date_end_mjd'] < time_end)
+                this_guide_subset = (exposure_table['date_beg_mjd'] > time) & (exposure_table['date_beg_mjd'] < time_end)
 
                 sci_file_stack = ""
                 already_plotted_exptimes_end = set()
                 for row in exposure_table[this_guide_subset]:
-                    if row['date_beg_mjd']in already_plotted_exptimes_start:
+                    if row['date_beg_mjd'] in already_plotted_exptimes_start:
                         continue
                     sci_file_stack += f"{row['date_beg_mjd'].isot}   {row['filename'][0:25]}    {row['exp_type']}, {row['optical_elements']}, {row['effexptm']:.1f} s\n"
+                    if row['date_end_mjd'] > time_end:
+                        sci_file_stack += f"                          {row['filename'][0:25]} continues onward into the next FG segment..."
+
                     already_plotted_exptimes_start.add(row['date_beg_mjd'])
                     already_plotted_exptimes_end.add(row['date_end_mjd'])
                 if sci_file_stack != "":
                     sci_file_stack = "Science exposures during this guide:\n\n"+sci_file_stack
-                fig.text(0.5, 0.60, sci_file_stack, verticalalignment='top', color='darkgreen')
+                fig.text(0.5, 0.63, sci_file_stack, verticalalignment='top', color='darkgreen')
 
             # Display jitterball for FG images. 
             # Do this after the sci image listing
@@ -1581,8 +1655,17 @@ def visit_guiding_sequence(visitid, verbose=True, include_performance=True):
 
             prev_step = this_step
 
+            ## Special case for moving targets!! Also plot an additional page that shows the path of the 
+            ## moving TRACK subarray across the detector
+            if is_moving_target_visit and this_step.startswith('gs-track'):
+                print("Plotting moving target TRACK path")
+                fig, axes = plt.subplots(figsize=(16, 9), ncols=2, nrows=1, gridspec_kw=gskw)
+                plot_moving_target_track_path(fn, ax=axes[0])
+                axes[1].set_visible(False)
+                pdf.savefig(fig)
+
         if include_performance and exposure_table is not None:
-            guiding_performance_plot(visitid=visitid)
+            guiding_performance_plot(visitid=visitid, is_moving_target=is_moving_target_visit)
             pdf.savefig(plt.gcf())
             # pdf.savefig(plt.gcf())
             # guiding_performance_dithers_plot(visitid=visitid)

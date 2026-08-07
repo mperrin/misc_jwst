@@ -13,6 +13,7 @@ _CURRENT_CYCLE = int(np.ceil((astropy.time.Time.now()-astropy.time.Time('2022-07
 def scrape_accepted_go_programs(cycle=1,
                              split_hours=True,
                              verbose=True,
+                             label_by_header=True,
                              ):
     from bs4 import BeautifulSoup
     category='go'
@@ -23,10 +24,20 @@ def scrape_accepted_go_programs(cycle=1,
     soup = BeautifulSoup(req.content, 'html.parser')
 
     tables = []
+    headers = []
     for table in soup.findAll("table"):
-        if table.findParent("table") is None:
+        if table.find_parent("table") is None:
             tables.append(pd.read_html(  io.StringIO(str(table)) )[0])
-    df = pd.concat(tables)
+
+            # Find the closest preceding h4        
+            h4 = table.find_previous("h4")
+            header_text = h4.get_text(strip=True) if h4 else None
+            headers.append(header_text)
+
+
+    df = pd.concat( # combine with header labels
+                [t.assign(header=h) for t, h in zip(tables, headers)],
+                   ignore_index=True)
     if verbose:
         print(f"Found {len(tables)} tables of programs")
         print (len(df))
@@ -37,11 +48,19 @@ def scrape_accepted_go_programs(cycle=1,
     for index in range(len(tables)): # tables_to_include:
         # Convert pandas to astropy
         aptable = astropy.table.Table.from_pandas(tables[index])
+
+        # make column names more consistent
+        if 'Instrument/ Mode' in aptable.colnames:
+            aptable.rename_column('Instrument/ Mode', 'Instrument/Mode')
+        if 'Prime/ Parallel Time (hours)' in aptable.colnames:
+            aptable.rename_column('Prime/ Parallel Time (hours)', 'Prime/Parallel Time (hours)')
+        if 'PIs & Co-PIs' in aptable.colnames:
+            aptable.rename_column('PIs & Co-PIs', 'PI & Co-PIs')
+
+
+
         if split_hours:
-            if cycle == 3:
-                hourskey = 'Prime/Parallel Time (hours)'
-            else:
-                hourskey = 'Prime/ Parallel Time (hours)'
+            hourskey = 'Prime/Parallel Time (hours)'
             hours = aptable[hourskey]
             prime_hours = []
             parallel_hours = []
@@ -61,9 +80,12 @@ def scrape_accepted_go_programs(cycle=1,
             aptable['Parallel_hours'] = parallel_hours
         if verbose:
             print(f"Table {index+1} has {len(aptable)} programs")
-   
+
         return_tables.append(aptable)
-    return return_tables
+    if label_by_header:
+        return {h: t for (t, h) in zip(return_tables, headers)}
+    else:
+        return return_tables
 
 
 def scrape_accepted_gto_programs(cycle=1,
@@ -80,7 +102,7 @@ def scrape_accepted_gto_programs(cycle=1,
 
     tables = []
     for table in soup.findAll("table"):
-        if table.findParent("table") is None:
+        if table.find_parent("table") is None:
             tables.append(pd.read_html(  io.StringIO(str(table)) )[0])
     df = pd.concat(tables)
 

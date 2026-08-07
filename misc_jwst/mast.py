@@ -1,17 +1,13 @@
 import functools
+import logging
 import os
 
+import astropy
+import astropy.table
 import numpy as np
-
-import astropy, astropy.table
-import astropy.units as u
-
-import astroquery
-from astroquery.mast import Mast
-from astroquery.mast import Observations
 import requests
+from astroquery.mast import Mast, Observations
 
-import logging
 log = logging.getLogger(__name__)
 log.setLevel(logging.INFO)
 
@@ -632,7 +628,9 @@ def report_jwst_highcontrast_observations(targname, verbose=True):
         if verbose:
             print(k)
         program_keys = list(obsinfo[k].keys())
-        program_keys.sort()
+
+        get_numeric_part = lambda key: int(key.replace('-planned', ''))   # get just the integer part of e.g. "8063-planned", "12518", etc 
+        program_keys.sort(key=get_numeric_part)
         text = ""
 
         if k == 'MIRI/CORON' or k =='NIRISS/AMI':
