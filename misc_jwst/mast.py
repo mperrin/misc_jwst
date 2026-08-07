@@ -24,6 +24,7 @@ def set_params(parameters):
     """
     return [{'paramName': p, 'values': v} for p, v in parameters.items()]
 
+#----- Queries and Metadata Lookup
 
 def jwst_keywords_query(instrument, columns=None, more_columns=None, all_columns=False, verbose=False,  **kwargs):
     """JWST keyword query
@@ -66,17 +67,16 @@ def jwst_keywords_query(instrument, columns=None, more_columns=None, all_columns
 
     keywords = {}
 
-    for kw in kwargs:
-        val = kwargs[kw]
-        if isinstance(kwargs[kw], list):
+    for kw, value in kwargs.items():
+        if isinstance(value, list):
             # query parameters must be of string type, not ints or other numeric types
-            query_val = [str(v) for v in kwargs[kw]]
-        elif isinstance(kwargs[kw], dict):
+            query_val = [str(v) for v in value]
+        elif isinstance(value, dict):
             # some queries, e.g. ranges with min and max, must be specified as a dict, inside a list
-            query_val = [kwargs[kw],]
+            query_val = [value,]
         else:
             # and any scalar parameters should be implicitly wrapped into a list
-            query_val = [str(kwargs[kw]),]
+            query_val = [str(value),]
 
         keywords[kw] = query_val
 
@@ -266,6 +266,7 @@ def query_program_visit_times(program,  verbose=False, use_guidestar=False):
     vis_table = astropy.table.unique(vis_table)  # discard any duplicate rows
     return vis_table
 
+
 def visit_start_end_times(visit):
     """Get start and end times for a specified visit, from MAST metadata.
 
@@ -296,7 +297,6 @@ def visit_start_end_times(visit):
     visitid = misc_jwst.utils.get_visitid(visit)  # handle either input format, VPPPPPOOOVVV or PPPP:O:V
     progid = visitid[1:6]
     obs = visitid[6:9]
-    exp_type = 'FGS_ID-IMAGE'
 
     # Set up the query
     keywords = {'program': [progid] ,'observtn': [obs]}
@@ -313,7 +313,6 @@ def visit_start_end_times(visit):
     tstart, tend = astropy.time.Time(t[0]['vststart_mjd'], format='mjd'), astropy.time.Time(t[0]['visitend_mjd'], format='mjd')
     tstart.format = tend.format = 'iso'
     return tstart, tend
-
 
 
 def _query_program_visit_times_by_inst(program, instrument, verbose=False):
@@ -378,44 +377,7 @@ def _query_program_visit_times_by_inst(program, instrument, verbose=False):
     return list(visit_times)
 
 
-def summarize_jwst_observations(targname, radius='30s', exclude_ta=True):
-    """Search MAST for JWST obs of a target, in all modes, including upcoming approved planned observations
-
-    Returns a nested dictionary, ordered by instrument_mode, then program ID, then filter
-
-    Parameters
-    ----------
-    targname : str
-        target name, for SIMBAD coords query
-    radius : str
-        cone search radius, as a string with units parsable by astropy.coordinates
-    exclude_ta : bool
-        should Target Acquisition exposures be excluded from the results?
-    """
-
-    obstable = Observations.query_criteria(
-            obs_collection='JWST',
-            objectname=targname,
-            radius=radius
-            )
-
-    has_obs = {}
-
-    for row in obstable:
-        mode = row['instrument_name']
-        filters = str(row['filters'])
-        proposal = row['proposal_id']
-        if exclude_ta and '/TA' in mode:
-            continue
-
-        if mode not in has_obs:
-            has_obs[mode] = {}
-        if proposal not in has_obs[mode]:
-            has_obs[mode][proposal] = set()
-        has_obs[mode][proposal].add(filters)
-
-    sorted_results_dict = dict(sorted(has_obs.items()))
-    return sorted_results_dict
+#----- File Downloads and Retrievals
 
 
 def retrieve_files(filenames, out_dir='.', verbose=True):
@@ -434,7 +396,7 @@ def retrieve_files(filenames, out_dir='.', verbose=True):
 
     mast_api_token = os.environ.get('MAST_API_TOKEN')
     if mast_api_token is not None:
-        headers=dict(Authorization=f"token {mast_api_token}")
+        headers={'Authorization': f"token {mast_api_token}"}
     else:
         headers=None
 
@@ -447,7 +409,7 @@ def retrieve_files(filenames, out_dir='.', verbose=True):
             outputs.append(outfile)
             continue
 
-        r = requests.get(mast_url, params=dict(uri=uri_prefix+p), stream=True,
+        r = requests.get(mast_url, params={'uri': uri_prefix+p}, stream=True,
                     # include the following argument if authentication is needed
                     #headers=dict(Authorization=f"token {mast_api_token}"))
                          headers=headers,
@@ -467,7 +429,6 @@ def retrieve_files(filenames, out_dir='.', verbose=True):
 
 mast_retrieve_files = retrieve_files # back compatibility
 download_files = retrieve_files # Name alias for convenience
-
 
 
 def get_mast_filename(filename, outputdir='.',
@@ -523,8 +484,8 @@ def get_mast_filename(filename, outputdir='.',
         else:
             raise ValueError(f"{outfile} exists, not overwritten")
 
-    r = requests.get(mast_url, params=dict(uri=f"mast:JWST/product/{filename}"),
-                     headers=dict(Authorization=f"token {mast_api_token}"), stream=True)
+    r = requests.get(mast_url, params={'uri': f"mast:JWST/product/{filename}"},
+                     headers={'Authorization': f"token {mast_api_token}"}, stream=True)
     r.raise_for_status()
 
     total_size_in_bytes = int(r.headers.get('content-length', 0))
@@ -595,7 +556,6 @@ def summarize_jwst_observations(targname, radius='10s', exclude_ta=True):
     return sorted_results_dict
 
 
-
 def report_jwst_highcontrast_observations(targname, verbose=True):
     """ Summarize the available and planned JWST observations of a target using high contrast modes
 
@@ -627,7 +587,7 @@ def report_jwst_highcontrast_observations(targname, verbose=True):
             print(k)
         program_keys = list(obsinfo[k].keys())
 
-        get_numeric_part = lambda key: int(key.replace('-planned', ''))   # get just the integer part of e.g. "8063-planned", "12518", etc 
+        get_numeric_part = lambda key: int(key.replace('-planned', ''))   # get just the integer part of e.g. "8063-planned", "12518", etc
         program_keys.sort(key=get_numeric_part)
         text = ""
 
