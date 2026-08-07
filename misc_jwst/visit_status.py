@@ -155,7 +155,6 @@ def query_program_status_form_visitid(visitid, cast_to_time=False):
 
     display(combined_table[(combined_table['Observation'] == oid) & (combined_table['Visit'] == vid)])
 
-    return
 
 
 def summarize_status(result_table):

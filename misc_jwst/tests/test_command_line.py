@@ -25,9 +25,8 @@ import sys
 
 import astropy.time
 import astropy.units as u
-import pytest
-
 import misc_jwst.command_line as cl
+import pytest
 
 # ---------------------------------------------------------------------------
 # Helpers (no faking of behavior -- just test plumbing)

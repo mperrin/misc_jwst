@@ -141,8 +141,8 @@ def aladin_annotate_data_and_apertures(aladin, datafile):
 
             # Special case, continued. The WCS in the guider ID images is not valid, so let's fix it. 
             print(f"Caution, FGS images currently have incomplete WCS. Attempting to fix position angle to {pa_gs}...")
-            import astropy.io.fits as fits
             import astropy.wcs
+            from astropy.io import fits
             datafile_hdul = fits.open(datafile)
             # Create a WCS object
             wcs = astropy.wcs.WCS(datafile_hdul['SCI'])

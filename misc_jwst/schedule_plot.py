@@ -187,7 +187,6 @@ def get_attplan_by_date(date, verbose=True):
 
     tab = astropy.table.Table.read( closest_attplan, data_start=14, format='ascii.csv',
                             names = ['Time', 'V1_RA', 'V1_Dec', 'V3_PA', 'q1', 'q2', 'q3', 'q4', 'Sun_Roll', 'Sun_Pitch', 'Slew_in_Progress', 'Momentum_x', 'Momentum_y', 'Momentum_z', 'Momentum_Unload'])
-        #
     return tab
 
 
@@ -282,7 +281,7 @@ def schedule_plot(trange = 1*u.day, open_plot=True, verbose=True, future=False, 
             pass
 
     # Make lookup table of parallel visits from the schedule
-    attached_parallels = collections.defaultdict(lambda : [])
+    attached_parallels = collections.defaultdict(list)
 
     prior_prime_visit = None  # Keep track of the previous one, for use with slew parallels in particular
     for i, row in enumerate(schedule_full):

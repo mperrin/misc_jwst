@@ -161,7 +161,7 @@ def get_net_sam(messages):
     """
     moves = np.zeros((len(messages),2), float)
     for i, m in enumerate(messages):
-        moves[i] = get_sam_xy(messages[i])
+        moves[i] = get_sam_xy(m)
     net_correction = moves.sum(axis=0)
     return net_correction
 

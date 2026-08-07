@@ -5,7 +5,6 @@ import warnings
 from io import BytesIO
 from urllib.request import urlopen
 
-import astropy.io.fits as fits
 import astropy.stats
 import astropy.time
 import jwst.datamodels
@@ -14,6 +13,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pysiaf
 import scipy
+from astropy.io import fits
 from astropy.table import Table
 from astroquery.mast import Mast
 from matplotlib.backends.backend_pdf import PdfPages

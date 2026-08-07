@@ -2,7 +2,6 @@ import functools
 import os
 
 import astropy
-import astropy.io.fits as fits
 import astropy.time
 import astropy.units as u
 import jwst.datamodels
@@ -13,6 +12,7 @@ import pysiaf
 import scipy
 import stdatamodels
 import stpsf
+from astropy.io import fits
 
 import misc_jwst.engdb
 import misc_jwst.oss_ta_sams

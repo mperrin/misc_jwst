@@ -339,20 +339,17 @@ def visit_start_end_times(eventlog, visitid=None, return_table=False, verbose=Tr
                 elif in_parallel_list:
                     current_visit_parallels = msg.split()
                     in_parallel_list = False
-    else:
-        if in_visit:
-            output.append(f'{vid} | {vstart:23} | ongoing            | '
-                  f' ongoing  | as of end of log')
-            outputs['visitid'].append(vid)
-            outputs['visitstart'].append(vstart)
-            outputs['visit_fgs_start'].append(str(vid_fgs_start))
-            outputs['visitend'].append('T'.join(time.split())[:-3])
-            outputs['duration'].append(-1)
-            outputs['parallels'].append(current_visit_parallels)
-            note += 'Still ongoing at end of available log.'
-            outputs['notes'].append(note )
-
-
+    if in_visit:
+        output.append(f'{vid} | {vstart:23} | ongoing            | '
+              f' ongoing  | as of end of log')
+        outputs['visitid'].append(vid)
+        outputs['visitstart'].append(vstart)
+        outputs['visit_fgs_start'].append(str(vid_fgs_start))
+        outputs['visitend'].append('T'.join(time.split())[:-3])
+        outputs['duration'].append(-1)
+        outputs['parallels'].append(current_visit_parallels)
+        note += 'Still ongoing at end of available log.'
+        outputs['notes'].append(note )
 
 
 
@@ -471,8 +468,7 @@ def extract_oss_TA_centroids(eventlog, selected_visit_id):
         if m.split('\t')[1].startswith("detector coord"):
             xy = ([float(p.strip('(),')) for p in m.split()[-2:]])
             return tuple(xy)
-    else:
-        raise RuntimeError("Could not parse TA centroid coordinates in that visit log")
+    raise RuntimeError("Could not parse TA centroid coordinates in that visit log")
 
 
 # Old/obsolete dev code. To be deleted once it's confirmed we don't need any of this:

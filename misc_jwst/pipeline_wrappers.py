@@ -5,8 +5,8 @@ import glob
 import os
 import warnings
 
-import astropy.io.fits as fits
 import jwst
+from astropy.io import fits
 from jwst.associations import asn_from_list
 from jwst.associations.lib.rules_level2_base import DMSLevel2bBase
 from jwst.associations.lib.rules_level3_base import DMS_Level3_Base

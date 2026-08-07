@@ -1,8 +1,8 @@
 import functools
 import os
 
-import astropy.io.fits as fits
 import pandas
+from astropy.io import fits
 
 # Utility functions for working with JWST CRDS and retrieving/displaying metadata about reference files used.
 
@@ -76,7 +76,7 @@ def describe_crds_ref_files_used(filename, verbose=False):
     print(f"   Reduced with CRDS_VER = {header['CRDS_VER']}\t\t\tCRDS version")
     print(f"   Reduced with CRDS_CTX = {header['CRDS_CTX']}\t\tCRDS context file")
     print(f"   Reduced on   DATE     = {header['DATE']}\tUTC date file created")
-    print("")
+    print()
 
 
     for k in ref_keys:

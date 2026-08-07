@@ -166,8 +166,7 @@ def query_visit_time(visitid, verbose=False):
             t0.format = 'iso'
             t1.format = 'iso'
             return t0, t1
-    else:
-        return None, None
+    return None, None
 
 
 def get_visit_exposure_times(visitid, extra_columns=""):
@@ -455,8 +454,7 @@ def retrieve_files(filenames, out_dir='.', verbose=True):
                         )
         r.raise_for_status()
         with open(outfile, 'wb') as fd:
-            for data in r.iter_content(chunk_size=1024000):
-                fd.write(data)
+            fd.writelines(r.iter_content(chunk_size=1024000))
 
         if not os.path.isfile(outfile):
             if verbose:

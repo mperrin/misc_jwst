@@ -1,14 +1,15 @@
+import json
 import os
 import zipfile
 from io import BytesIO
 
-import lxml.etree as etree
 import requests
+from lxml import etree
 
 
 def get_read_apt_xml():
     try:
-        import mirage.apt.read_apt_xml as read_apt_xml
+        from mirage.apt import read_apt_xml
         return read_apt_xml
     except ImportError:
         raise RuntimeError("The package 'mirage' is required to use this function. This is an optional dependency for misc_jwst")
@@ -41,7 +42,8 @@ def download_apt_aptx(progid, redownload=False):
     outname = f"{progid}.aptx"
     if not os.path.exists(outname) or redownload:
         r = requests.get(f'http://www.stsci.edu/jwst/phase2-public/{progid}.aptx')
-        open(outname,"wb").write(r.content)
+        with open(outname,"wb") as handle:
+            handle.write(r.content)
         print(f"{outname} downloaded")
     else:
         print(f"{outname} file already present.")
@@ -52,7 +54,8 @@ def download_apt_aptx_and_xml(progid, redownload=False):
     outname = f"{progid}.aptx"
     if not os.path.exists(outname) or redownload:
         r = requests.get(f'http://www.stsci.edu/jwst/phase2-public/{progid}.aptx')
-        open(outname,"wb").write(r.content)
+        with open(outname,"wb") as handle:
+            handle.write(r.content)
         print(f"{outname} downloaded")
         z = zipfile.ZipFile(BytesIO(r.content))
         z.extract(f'{progid}.xml')
@@ -193,8 +196,8 @@ def get_program_obslabels(progid):
     # Also read the special requirements info, which MIRAGE doesn't yet do
     #sr_info = parse_special_reqs('{}.xml'.format(progid), verbose=False)
 
-    obslabels = dict()
-    obstemplates = dict()
+    obslabels = {}
+    obstemplates = {}
     for num, label, template in zip (res['ObservationID'], res['ObservationName'], res['APTTemplate']):
         obslabels[num] = label
         obstemplates[num] = template
@@ -221,7 +224,6 @@ def export_timing_json(prog_id, redo=False):
 def timing_summary_from_json(progid):
     # Read info from the APT exported .timing.json files and display summary
     fn = f'{progid}.timing.json'
-    import json
 
     print(f"Timing summary for APT {progid}")
     with open(fn) as file:

@@ -135,7 +135,7 @@ def display_schedule(sched_table, time_range=2*u.day):
         if sched_time > now and (not marked_now):
             print(f">>>>>>>>>>>   \tCurrent time       \t{now.iso[:-4]} UT \t<<<<<<<<<<<")
             marked_now = True
-        print(f"{row['VISIT ID']}\t{row['VISIT TYPE']}\t{row['SCHEDULED START TIME'][:-1]}\t{mode:10s}\t{str(row['TARGET NAME'])}")
+        print(f"{row['VISIT ID']}\t{row['VISIT TYPE']}\t{row['SCHEDULED START TIME'][:-1]}\t{mode:10s}\t{row['TARGET NAME']!s}")
     print('\n')
 
 
@@ -266,7 +266,7 @@ def jwstops_durations(visitid, lookback=7*u.day):
         from . import mast
         start_time, end_time = mast.visit_start_end_times(visitid)
         log = engdb.get_ictm_event_log(startdate=start_time, enddate=end_time)
-        visit_table = engdb.visit_script_durations(log, visitid)
+        engdb.visit_script_durations(log, visitid)
 
 
 def jwstops_deltas(lookback=48*u.hour):
@@ -320,7 +320,7 @@ def jwstops_overview(lookback=48*u.hour, date=None):
             mode = _short_modes.get(str(long_mode), str(long_mode))
             delta_time = row['visit_fgs_start'] - sched_start_time
 
-            print(f"{row['VISIT ID']}\t{row['visit_fgs_start'].iso[:-4]}\t{delta_time.to_value(u.hour):+.2f}\t{mode:10s}\t{str(schedrow['TARGET NAME']):15s}\t{row['notes']}")
+            print(f"{row['VISIT ID']}\t{row['visit_fgs_start'].iso[:-4]}\t{delta_time.to_value(u.hour):+.2f}\t{mode:10s}\t{schedrow['TARGET NAME']!s:15s}\t{row['notes']}")
         except IndexError:
             print(f"{row['VISIT ID']}\t{row['visit_fgs_start'].iso[:-4]}\t??\t??\t??\t{row['notes']}")
 
@@ -344,7 +344,7 @@ def jwstops_overview(lookback=48*u.hour, date=None):
         if sched_start_time - now >  lookback:
             break
 
-        print(f"{schedrow['VISIT ID']}\t{sched_start_time.iso[:-4]}\t    \t{mode:10s}\t{str(schedrow['TARGET NAME'])}")
+        print(f"{schedrow['VISIT ID']}\t{sched_start_time.iso[:-4]}\t    \t{mode:10s}\t{schedrow['TARGET NAME']!s}")
 
     #print(f">>>>>>>>>>>   \tCurrent time       \t{now.iso[:-4]} UT \t<<<<<<<<<<<")
 
@@ -365,7 +365,7 @@ def wavefront_plot(date=None):
     stpsf.trending.single_measurement_trending_plot(opdtable, row_index=-1, vmax=0.05)
     plt.savefig('wavefront_trending_plot.pdf')
     if _ON_MACOS:
-        result = subprocess.run(["open", "wavefront_trending_plot.pdf"])
+        subprocess.run(["open", "wavefront_trending_plot.pdf"])
 
 def wavefront_histogram_plot(date=None):
     import subprocess
@@ -384,7 +384,7 @@ def wavefront_histogram_plot(date=None):
     plt.tight_layout()
     plt.savefig('wavefront_histogram_plot.pdf')
     if _ON_MACOS:
-        result = subprocess.run(["open", "wavefront_histogram_plot.pdf"])
+        subprocess.run(["open", "wavefront_histogram_plot.pdf"])
 
 
 def jwstops_main():
