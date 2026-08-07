@@ -1,8 +1,6 @@
 import numpy as np
-import astropy
-
 import pysiaf
-import astropy.time, astropy.units as u, astropy.table
+
 import misc_jwst
 
 ## Functions to retrieve on-board TA SAMs from observatory telemetry logs
@@ -27,8 +25,8 @@ import misc_jwst
 # 	  (expressed as ∆V2, ∆V3 in observatory V frame coordinates, in arcsec)
 # 
 # 
-
 from misc_jwst.engdb import get_oss_log_messages
+
 # The following is commented out to reduce code duplication, but can be uncommented if using this
 # module as standalone code outside of misc_jwst
 #
@@ -313,7 +311,7 @@ def parse_ta_log_messages_by_instrument(msg_table, which_guider, visitid, verbos
             if ta_type in ['MIRI TA, LRS Slitless', 'MIRI TA, coronagraphic']:
                 print("The first SAM above is from the TA_BLOCK region to TA region; we ignore that SAM for this calculation.")
             if ta_v2v3_offset is not None:
-                print(f"Note the second SAM above includes the coron offset between TA subregions, which we should subtract out:")
+                print("Note the second SAM above includes the coron offset between TA subregions, which we should subtract out:")
                 print(-ta_v2v3_offset, " in V2,V3")
 
 
@@ -437,13 +435,13 @@ def parse_ta_log_messages_by_instrument(msg_table, which_guider, visitid, verbos
     ta_correction_v2v3 = convert_sam_FGSideal_to_Vframe(net_ta_correction, which_guider, verbose=verbose)
 
     if verbose:
-        print("TA CORRECTION:    ", ta_correction_v2v3, f"arcsecs in V2V3 frame")
+        print("TA CORRECTION:    ", ta_correction_v2v3, "arcsecs in V2V3 frame")
 
     if ta_v2v3_offset is not None:
         ta_correction_v2v3 += ta_v2v3_offset
         if verbose:
             print(f"Taking into account the additional offset in V2V3 from {ta_v2v3_offset_source}")
-            print("TA CORRECTION:    ", ta_correction_v2v3, f"arcsecs in V2V3 frame")
+            print("TA CORRECTION:    ", ta_correction_v2v3, "arcsecs in V2V3 frame")
 
     if verbose:
         print("TA DELTA ROLL:", ta_delta_roll, "arcseconds")

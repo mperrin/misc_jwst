@@ -1,20 +1,22 @@
-import functools, os
+import functools
+import os
 
-import matplotlib, matplotlib.pyplot as plt
-import numpy as np
-
-import pysiaf
-import stpsf
-import scipy
 import astropy
 import astropy.io.fits as fits
-import astropy.units as u
 import astropy.time
-import jwst.datamodels, stdatamodels
+import astropy.units as u
+import jwst.datamodels
+import matplotlib
+import matplotlib.pyplot as plt
+import numpy as np
+import pysiaf
+import scipy
+import stdatamodels
+import stpsf
 
-from misc_jwst import utils, mast
-import misc_jwst.engdb, misc_jwst.oss_ta_sams
-
+import misc_jwst.engdb
+import misc_jwst.oss_ta_sams
+from misc_jwst import mast, utils
 
 # Constants and lookup tables:
 
@@ -117,8 +119,8 @@ def get_visit_ta_image(visitid, verbose=True, kind='cal', inst='NIRCam', index=0
             except urllib.error.HTTPError as err:
                 if err.code == 401:  # Unauthorized
                     # Use MAST API to allow retrieval of exclusive access data, if relevant
+
                     import astroquery
-                    import tempfile
                     mast_api_token = os.environ.get('MAST_API_TOKEN', None)
                     mast_obs = astroquery.mast.ObservationsClass(mast_api_token)
                     uri = f"mast:JWST/product/{filename}"
@@ -243,7 +245,7 @@ def show_ta_img(visitid, ax=None, return_handles=False, inst='NIRCam', mark_refe
     norm = matplotlib.colors.AsinhNorm(linear_width = asinh_linear_width, vmax=vmax, #vmin=0)
                                        vmin=-1*rsig)
 
-    model = jwst.datamodels.open(hdul)
+    model = utils.open_hdulist_as_datamodel(hdul)
     annotate_subarray = f"\n{model.meta.subarray.name} " if inst.upper() == "NIRSPEC" else ""
     annotation_text = f"{model.meta.target.proposer_name}\n{model.meta.instrument.filter}, {model.meta.exposure.readpatt}:{model.meta.exposure.ngroups}:{model.meta.exposure.nints}{annotate_subarray}\n{model.meta.exposure.effective_exposure_time:.2f} s"
 
@@ -513,7 +515,7 @@ def main_ta_analysis(visitid, inst=None, verbose=True,  plot=True, output_plot_d
 
             ### WCS COORDINATES ###
             # Where was the target expected to be, at initial position post FGS ID->FG
-            model = jwst.datamodels.open(hdul)
+            model = utils.open_hdulist_as_datamodel(hdul)
             targ_coords = astropy.coordinates.SkyCoord(model.meta.target.ra, model.meta.target.dec, frame='icrs', unit=u.deg)
             targ_coords_pix = model.meta.wcs.world_to_pixel(targ_coords)  # returns x, y
             wcs_text = f'Expected from WCS: {targ_coords_pix[0]:.2f}, {targ_coords_pix[1]:.2f}'
@@ -699,7 +701,7 @@ def nrc_ta_comparison(visitid, inst='NIRCam', verbose=True, show_centroids=True,
     nrc = stpsf.setup_sim_to_match_file(hdul, verbose=False)
     opdname = nrc.pupilopd[0].header['CORR_ID'] + "-NRCA3_FP1-1.fits"
     if verbose:
-        print(f"Calculating PSF to match that TA image...")
+        print("Calculating PSF to match that TA image...")
     psf = nrc.calc_psf(fov_pixels=im_obs.shape[0])
 
     # Align and Shift:
@@ -757,7 +759,7 @@ def nrc_ta_comparison(visitid, inst='NIRCam', verbose=True, show_centroids=True,
                 oss_centroid_text = "No OSS centroid; TA failed"
 
             ### WCS COORDINATES ###
-            model = jwst.datamodels.open(hdul)
+            model = utils.open_hdulist_as_datamodel(hdul)
             targ_coords = astropy.coordinates.SkyCoord(model.meta.target.ra, model.meta.target.dec, frame='icrs', unit=u.deg)
             targ_coords_pix = model.meta.wcs.world_to_pixel(targ_coords)  # returns x, y
             if verbose:
@@ -799,7 +801,7 @@ def nrc_ta_comparison(visitid, inst='NIRCam', verbose=True, show_centroids=True,
     diffim = im_obs -bglevel - im_sim_scaled_aligned
 
     dofs = np.isfinite(diffim).sum() - 4  # 4 estimated parameters: X and Y offsets, flux scaling, background level
-    reduced_chisq = np.nansum(((diffim / im_obs_err)**2)) / dofs
+    reduced_chisq = np.nansum((diffim / im_obs_err)**2) / dofs
 
     axes[2].imshow(diffim, cmap=cmap, norm=norm, origin='lower')
     axes[2].set_title('Difference image\nafter alignment and scaling')
@@ -924,7 +926,7 @@ def nrc_ta_get_wcs_offset(visitid, inst='NIRCam', verbose=True, **kwargs):
                     oss_centroid_text = "No OSS centroid; TA failed"
 
                 ### WCS COORDINATES ###
-                model = jwst.datamodels.open(hdul)
+                model = utils.open_hdulist_as_datamodel(hdul)
                 targ_coords = astropy.coordinates.SkyCoord(model.meta.target.ra, model.meta.target.dec, frame='icrs', unit=u.deg)
                 targ_coords_pix = model.meta.wcs.world_to_pixel(targ_coords)  # returns x, y
                 if verbose:
@@ -1035,6 +1037,7 @@ def niriss_ta_image_comparison(visitid, verbose=False, **kwargs):
         Visit ID. Should be a visit that begins with a NIRISS target acquisition.
     """
     import stpsf
+
     from misc_jwst.fitting import objfun_stpsf_xyoffset
 
     # Preparation: Get metadata

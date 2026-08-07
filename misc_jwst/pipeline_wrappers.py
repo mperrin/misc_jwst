@@ -1,18 +1,22 @@
 # Misc utility and wrapper functions for running the JWST pipeline conveniently
 
 
-import os, glob
+import glob
+import os
 import warnings
 
 import astropy.io.fits as fits
-
-import stcal
 import jwst
-from jwst.pipeline import calwebb_detector1, calwebb_image2, calwebb_spec2, calwebb_image3, calwebb_spec3
 from jwst.associations import asn_from_list
-from jwst.associations.lib.rules_level3_base import DMS_Level3_Base
 from jwst.associations.lib.rules_level2_base import DMSLevel2bBase
-
+from jwst.associations.lib.rules_level3_base import DMS_Level3_Base
+from jwst.pipeline import (
+    calwebb_detector1,
+    calwebb_image2,
+    calwebb_image3,
+    calwebb_spec2,
+    calwebb_spec3,
+)
 
 # The optimal settings will vary depending on dataset and details of analysis & science goals...
 # The following just intended as suggestions and/or reminders of parameter names which are useful to tweak
@@ -156,7 +160,7 @@ def remove_1f_cw(cal2file, splitamps=True, overwrite=False, vertical=False, plot
 
 
     cal21overffile = cal2file.replace('_cal.fits','_cal1f.fits')
-    print ('Running 1/f correction on {} to produce {}'.format(cal2file,cal21overffile))
+    print (f'Running 1/f correction on {cal2file} to produce {cal21overffile}')
 
     if os.path.exists(cal21overffile) and not overwrite:
         print(f"Already exists: {cal21overffile}")
@@ -223,7 +227,6 @@ def get_instrument_filter(model):
 def make_l3_association(filelist, asn_description=None, spec=False):
     """Make an association file from a list of input files """
     from jwst.associations import asn_from_list
-    from jwst.associations.lib.rules_level3_base import DMS_Level3_Base
 
 
     with jwst.datamodels.open(filelist[0]) as model:

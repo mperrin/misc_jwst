@@ -1,10 +1,8 @@
-import numpy as np
 import ipyaladin
-from astropy.coordinates import SkyCoord
 import jwst.datamodels
+import numpy as np
 import pysiaf
-
-
+from astropy.coordinates import SkyCoord
 
 
 def compute_stcs_footprint(apertureSiaf, skyRa, skyDec):
@@ -14,11 +12,10 @@ def compute_stcs_footprint(apertureSiaf, skyRa, skyDec):
     See https://github.com/spacetelescope/mast_notebooks/blob/main/notebooks/multi_mission/display_footprints/selectSIAF.py
         """
     if (apertureSiaf.AperShape == 'QUAD' or apertureSiaf.AperShape == 'RECT'):
-        apertureSregion = 'POLYGON ICRS {:.8f} {:.8f} {:.8f} {:.8f} {:.8f} {:.8f} {:.8f} {:.8f} '.format(
-            skyRa[0], skyDec[0], skyRa[1], skyDec[1], skyRa[2], skyDec[2], skyRa[3], skyDec[3])
+        apertureSregion = f'POLYGON ICRS {skyRa[0]:.8f} {skyDec[0]:.8f} {skyRa[1]:.8f} {skyDec[1]:.8f} {skyRa[2]:.8f} {skyDec[2]:.8f} {skyRa[3]:.8f} {skyDec[3]:.8f} '
     elif apertureSiaf.AperShape == 'CIRC':
         radius = apertureSiaf.maj/3600.0
-        apertureSregion = 'CIRCLE ICRS {} {} {} '.format(skyRa, skyDec, radius)
+        apertureSregion = f'CIRCLE ICRS {skyRa} {skyDec} {radius} '
     else:
         print('Unsupported shape {}').format(apertureSiaf.AperShape)
 
@@ -144,7 +141,8 @@ def aladin_annotate_data_and_apertures(aladin, datafile):
 
             # Special case, continued. The WCS in the guider ID images is not valid, so let's fix it. 
             print(f"Caution, FGS images currently have incomplete WCS. Attempting to fix position angle to {pa_gs}...")
-            import astropy.wcs, astropy.io.fits as fits
+            import astropy.io.fits as fits
+            import astropy.wcs
             datafile_hdul = fits.open(datafile)
             # Create a WCS object
             wcs = astropy.wcs.WCS(datafile_hdul['SCI'])

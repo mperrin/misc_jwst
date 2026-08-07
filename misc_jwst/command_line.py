@@ -1,15 +1,19 @@
+import argparse
+import os
+import platform
+
 import astropy.time
 import astropy.units as u
 import numpy as np
-from . import engdb
 import requests
 from bs4 import BeautifulSoup
 
-import os
-import argparse
-
 import misc_jwst.utils
 from misc_jwst.visit_status import dsn_schedule
+
+from . import engdb
+
+_ON_MACOS = platform.system() == "Darwin"
 
 _short_modes = {'MIRI Medium Resolution Spectroscopy': 'MIRI MRS',
                'MIRI Low Resolution Spectroscopy': 'MIRI LRS',
@@ -39,7 +43,7 @@ def jwstops_latest(lookback=48*u.hour):
     visit_table = engdb.visit_start_end_times(log, verbose=False, return_table=True)
 
     print(f"\nVisits within the previous {lookback}:\n")
-    print(f"Visit ID\tStart time (UT)     \tEnd time (UT)\t   Duration [s]\tNotes")
+    print("Visit ID\tStart time (UT)     \tEnd time (UT)\t   Duration [s]\tNotes")
     for row in visit_table:
         print(f"{row['visitid']}\t{row['visitstart'].iso[:-4]}\t{row['visitend'].iso[:-4]}\t{int(row['duration']):5d}\t{row['notes']}")
 
@@ -118,14 +122,14 @@ def display_schedule(sched_table, time_range=2*u.day):
     now = astropy.time.Time.now()
 
     print(f"Showing scheduled visits within {time_range} from the current time:\n")
-    print(f"VISIT ID\tVISIT TYPE      \tSCHED. FGSMAIN START\tInstr. Mode\tTarget Name")
+    print("VISIT ID\tVISIT TYPE      \tSCHED. FGSMAIN START\tInstr. Mode\tTarget Name")
     for row in sched_table[has_dates]:
 
         long_mode = row['SCIENCE INSTRUMENT AND MODE']
         mode = _short_modes.get(str(long_mode), str(long_mode))
         sched_time = astropy.time.Time(row['SCHEDULED START TIME'])
 
-        if abs((sched_time-now)) > time_range:
+        if abs(sched_time-now) > time_range:
             continue
 
         if sched_time > now and (not marked_now):
@@ -197,7 +201,6 @@ def jwstops_visitlog(visitid, lookback=7*u.day, visit_date=None):
     #  'TIME', "EVENT_MSG", "EVENT_MSG_ID", "EVENT_MSG_SRC"
     for row in visit_table:
         print(f"{row['TIME']}  {row['EVENT_MSG_SRC']:4s} {row['EVENT_MSG_ID']:4d}    {row['EVENT_MSG']}")
- 
 
 
 def jwstops_programstatus(program):
@@ -214,6 +217,14 @@ def jwstops_programstatus(program):
     print(tab)
 
 def jwstops_guiding(visitid, lookback=7*u.day):
+    """ Invoke visit_guiding_sequence, a high-level function
+    that invokes much of the other code in the guiding submodule
+
+    Plot complete image sequence of guiding events within a visit
+    including exposures and OSS event log messages, and inferred notes on FGS activity success or failure
+    """
+
+
     import misc_jwst.guiding_analyses
     visitid = misc_jwst.utils.get_visitid(visitid)  # handle either input format
     misc_jwst.guiding_analyses.visit_guiding_sequence(visitid)
@@ -268,7 +279,7 @@ def jwstops_deltas(lookback=48*u.hour):
     schedule = get_schedule_table()
 
     print(f"\nVisits within the previous {lookback}:\n")
-    print(f"Visit ID\tStart time (UT)     \tSched. Start time (UT)\tTime delta [hr]\tNotes")
+    print("Visit ID\tStart time (UT)     \tSched. Start time (UT)\tTime delta [hr]\tNotes")
     for row in visit_table:
         match_index = np.where(schedule['VISIT ID'] == row['VISIT ID'])[0][0] 
 
@@ -276,7 +287,7 @@ def jwstops_deltas(lookback=48*u.hour):
         delta_time = row['visit_fgs_start'] - sched_start_time
 
         print(f"{row['VISIT ID']}\t{row['visit_fgs_start'].iso[:-4]}\t{sched_start_time.iso[:-4]}\t{delta_time.to_value(u.hour):+.2f}\t{row['notes']}")
-    print(f"\nTimes above refer to scheduled/actual start times of FGS guide star ID+acq for each visit.\nNegative means observatory ahead of schedule, positive is behind schedule.")
+    print("\nTimes above refer to scheduled/actual start times of FGS guide star ID+acq for each visit.\nNegative means observatory ahead of schedule, positive is behind schedule.")
     latest_log_time = astropy.time.Time(log[-1]['Time'])
     print(f"Latest available log message ends at {latest_log_time.isot[:-4]}  ({(now-latest_log_time).to_value(u.hour):.1f} hours ago)\n")
 
@@ -299,7 +310,7 @@ def jwstops_overview(lookback=48*u.hour, date=None):
     schedule = schedule[has_dates]
 
     print(f"\nVisits within the previous {lookback}:\n")
-    print(f"Visit ID\tStart time (UT)     \tΔT [hr]\tInstr. Mode\tTarget\t\t\tNotes")
+    print("Visit ID\tStart time (UT)     \tΔT [hr]\tInstr. Mode\tTarget\t\t\tNotes")
     for row in visit_table:
         try:
             match_index = np.where(schedule['VISIT ID'] == row['VISIT ID'])[0][0] 
@@ -339,26 +350,30 @@ def jwstops_overview(lookback=48*u.hour, date=None):
 
 
 
-    print(f"\nTimes above refer to scheduled/actual start times of FGS guide star ID+acq for each visit.\nNegative ΔT means observatory ahead of schedule, positive is behind schedule.\n")
+    print("\nTimes above refer to scheduled/actual start times of FGS guide star ID+acq for each visit.\nNegative ΔT means observatory ahead of schedule, positive is behind schedule.\n")
 
 
 
 def wavefront_plot(date=None):
-    import stpsf
-    import matplotlib.pyplot as plt
     import subprocess
+
+    import matplotlib.pyplot as plt
+    import stpsf
     opdtable = stpsf.mast_wss.retrieve_mast_opd_table()
     opdtable = stpsf.mast_wss.deduplicate_opd_table(opdtable)
     #stpsf.mast_wss.download_all_opds(opdtable)
-    stpsf.trending.single_measurement_trending_plot(opdtable, row_index=-1, vmax=0.05);
+    stpsf.trending.single_measurement_trending_plot(opdtable, row_index=-1, vmax=0.05)
     plt.savefig('wavefront_trending_plot.pdf')
-    result = subprocess.run(["open", "wavefront_trending_plot.pdf"])
+    if _ON_MACOS:
+        result = subprocess.run(["open", "wavefront_trending_plot.pdf"])
 
 def wavefront_histogram_plot(date=None):
-    import stpsf
-    import matplotlib.pyplot as plt
     import subprocess
-    import astropy.time, astropy.units
+
+    import astropy.time
+    import astropy.units
+    import matplotlib.pyplot as plt
+    import stpsf
 
     if date is None:
         date = astropy.time.Time.now()
@@ -368,7 +383,8 @@ def wavefront_histogram_plot(date=None):
                                       mark_corrections='arrows', max_wfe=120, thresh=75)
     plt.tight_layout()
     plt.savefig('wavefront_histogram_plot.pdf')
-    result = subprocess.run(["open", "wavefront_histogram_plot.pdf"])
+    if _ON_MACOS:
+        result = subprocess.run(["open", "wavefront_histogram_plot.pdf"])
 
 
 def jwstops_main():

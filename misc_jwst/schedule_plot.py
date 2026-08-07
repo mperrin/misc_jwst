@@ -1,14 +1,16 @@
-import os, glob
+import collections
+import glob
+import os
+import textwrap
+
 import matplotlib
 import matplotlib.dates as mdates
 import matplotlib.pyplot as plt
+import pytz
 
+import misc_jwst.visit_status
 from misc_jwst.command_line import *
 from misc_jwst.command_line import _short_modes
-import misc_jwst.visit_status
-import collections
-import textwrap
-import pytz
 
 # subset of template _short_modes that count as spectroscopy
 _templates_spectroscopy = ['MIRI MRS', 'MIRI LRS', 'NIRCam WFSS', 'NIRCam Grism', 'NIRISS WFSS', 'NIRISS SOSS',

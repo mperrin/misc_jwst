@@ -1,10 +1,10 @@
-import requests
 import os
 import zipfile
 from io import BytesIO
-import lxml.etree as etree
 
-import numpy as np
+import lxml.etree as etree
+import requests
+
 
 def get_read_apt_xml():
     try:
@@ -30,17 +30,17 @@ def set_aptpath(path = '/Application`s/APT 2021.2/bin/apt'):
 ## Functions to retrieve and download APT files from STScI
 
 def download_apt_xml(progid):
-    r = requests.get('http://www.stsci.edu/jwst/phase2-public/{}.aptx'.format(progid))
+    r = requests.get(f'http://www.stsci.edu/jwst/phase2-public/{progid}.aptx')
     z = zipfile.ZipFile(BytesIO(r.content))
     #fn = z.filelist[1].filename
-    retval = z.extract('{}.xml'.format(progid))
+    retval = z.extract(f'{progid}.xml')
     print(retval)
 
 
 def download_apt_aptx(progid, redownload=False):
     outname = f"{progid}.aptx"
     if not os.path.exists(outname) or redownload:
-        r = requests.get('http://www.stsci.edu/jwst/phase2-public/{}.aptx'.format(progid))
+        r = requests.get(f'http://www.stsci.edu/jwst/phase2-public/{progid}.aptx')
         open(outname,"wb").write(r.content)
         print(f"{outname} downloaded")
     else:
@@ -51,11 +51,11 @@ def download_apt_aptx_and_xml(progid, redownload=False):
     # Download and save the APT files, and also export their contents to XML
     outname = f"{progid}.aptx"
     if not os.path.exists(outname) or redownload:
-        r = requests.get('http://www.stsci.edu/jwst/phase2-public/{}.aptx'.format(progid))
+        r = requests.get(f'http://www.stsci.edu/jwst/phase2-public/{progid}.aptx')
         open(outname,"wb").write(r.content)
         print(f"{outname} downloaded")
         z = zipfile.ZipFile(BytesIO(r.content))
-        z.extract('{}.xml'.format(progid))
+        z.extract(f'{progid}.xml')
         print(f"  and extracted {progid}.xml")
     else:
         print(f"{outname} file already present.")
@@ -84,7 +84,7 @@ def parse_special_reqs(filename, verbose=False):
     # Loop through observations, get parameters
     all_srs = {}
     for i_obs, obs in enumerate(observation_list):
-        observation_number = np.int(obs.find(apt + 'Number').text)
+        observation_number = int(obs.find(apt + 'Number').text)
         if verbose:
             print(observation_number)
 
@@ -119,9 +119,9 @@ def describe_setup(results, i, sr_info, progid):
     else:
         retval =  results['APTTemplate'][i]
 
-    filenameout = "jw{:05d}{:03d}001_*".format(progid, obsid)
+    filenameout = f"jw{progid:05d}{obsid:03d}001_*"
 
-    retval= "{:45s}\tGuiding={:10s}\t{}".format(retval, guidemode, filenameout)
+    retval= f"{retval:45s}\tGuiding={guidemode:10s}\t{filenameout}"
     return retval
 
 
@@ -143,12 +143,12 @@ def summarize_program(progid):
     try:
         res = reader.read_xml(xmlfn, verbose=False)
     except ValueError:
-        return "Unsupported template type for {}.xml".format(progid)
+        return f"Unsupported template type for {progid}.xml"
     if len(res['Title'])==0:
-        return "Problem reading {}.xml".format(progid)
+        return f"Problem reading {progid}.xml"
 
     # Also read the special requirements info, which MIRAGE doesn't yet do
-    sr_info = parse_special_reqs('{}.xml'.format(progid), verbose=False)
+    sr_info = parse_special_reqs(f'{progid}.xml', verbose=False)
 
     output = ""
     # Record the program title
@@ -156,7 +156,7 @@ def summarize_program(progid):
 
     # Generate descriptions of all observations. These will typically be repeated many times,
     # because there are usually multiple exposures per observation.
-    labels = ['Obs {}: {}'.format(num, label) for num, label in zip (res['ObservationID'], res['ObservationName']) ]
+    labels = [f'Obs {num}: {label}' for num, label in zip (res['ObservationID'], res['ObservationName']) ]
 
     # so now we iterate through, skip duplicates, and output one line per observation
     prev = ""
@@ -164,7 +164,7 @@ def summarize_program(progid):
         if label == prev:
             continue
         prev=label
-        output+="\t{:70s}\t{}\n".format(label, describe_setup(res, i, sr_info, progid))
+        output+=f"\t{label:70s}\t{describe_setup(res, i, sr_info, progid)}\n"
 
     return output
 
@@ -186,9 +186,9 @@ def get_program_obslabels(progid):
     try:
         res = reader.read_xml(xmlfn, verbose=False)
     except ValueError:
-        return "Unsupported template type for {}.xml".format(progid)
+        return f"Unsupported template type for {progid}.xml"
     if len(res['Title'])==0:
-        return "Problem reading {}.xml".format(progid)
+        return f"Problem reading {progid}.xml"
 
     # Also read the special requirements info, which MIRAGE doesn't yet do
     #sr_info = parse_special_reqs('{}.xml'.format(progid), verbose=False)
@@ -246,7 +246,6 @@ def timing_summary_from_json_to_excel(progid, workbook_in=None, include_descript
     """ You can use this if you need to customize which observations are included in your sums, for instance if you have some visitions that are on hold or contingency and should not be included. This outputs Excel files. Edit the spreadsheet and set the "Include" column to 'N' for observations to skip from the sums
     """
     import xlsxwriter
-    from astropy.table import Table
     fn = f'{progid}.timing.json'
     # Create a workbook and add a worksheet.
     if workbook_in is not None:

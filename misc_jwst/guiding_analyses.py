@@ -1,29 +1,26 @@
 
-import os, sys
-import requests
 import functools
-from astroquery.mast import Mast,Observations
-from astropy.table import Table, unique, vstack
-import astropy.time, astropy.stats
-import astropy.io.fits as fits
-import numpy as np
-import scipy
-import functools
+import os
 import warnings
-from urllib.request import urlopen
 from io import BytesIO
+from urllib.request import urlopen
 
-
-import matplotlib, matplotlib.pyplot as plt
-from matplotlib.backends.backend_pdf import PdfPages
-import mpl_scatter_density
-
-
-import pysiaf
+import astropy.io.fits as fits
+import astropy.stats
+import astropy.time
 import jwst.datamodels
-import misc_jwst.utils, misc_jwst.mast
-from misc_jwst.mast import mast_retrieve_files, set_params
+import matplotlib
+import matplotlib.pyplot as plt
+import numpy as np
+import pysiaf
+import scipy
+from astropy.table import Table
+from astroquery.mast import Mast
+from matplotlib.backends.backend_pdf import PdfPages
 
+import misc_jwst.mast
+import misc_jwst.utils
+from misc_jwst.mast import mast_retrieve_files, set_params
 
 
 @functools.lru_cache
@@ -815,7 +812,7 @@ def guiding_performance_jitterball(sci_filename, visitid=None, gs_filename=None,
                 transform=ax.transAxes)
 
     if max(xstd, ystd) > 2:
-        ax.text(0.5, 0.98, f'WARNING: Guiding Jitter is\nsignificantly larger than usual!', horizontalalignment='center', verticalalignment='top',
+        ax.text(0.5, 0.98, 'WARNING: Guiding Jitter is\nsignificantly larger than usual!', horizontalalignment='center', verticalalignment='top',
                 transform=ax.transAxes, fontweight='bold', color='darkred')
 
 
@@ -921,7 +918,7 @@ def display_one_id_image(filename, destripe = True, smooth=True, ax=None,
                 transform=ax.transAxes,
                 verticalalignment='top')
         if orientation=='raw':
-            ax.text(0.99, 0.99, f'detector raw orientation',
+            ax.text(0.99, 0.99, 'detector raw orientation',
                 color='yellow',
                 transform=ax.transAxes,
                 verticalalignment='top', horizontalalignment='right')
@@ -1079,7 +1076,7 @@ def display_one_guider_image(filename,  ax=None, use_dq=False,
                 color='yellow',
                 transform=ax.transAxes,
                 verticalalignment='top')
-        ax.text(0.99, 0.99, (f'detector raw orientation' if orientation=='raw' else 'science orientation') +
+        ax.text(0.99, 0.99, ('detector raw orientation' if orientation=='raw' else 'science orientation') +
                                                                                    ("\n"+cubelabel if cubemode else ""),
             color='yellow',
             transform=ax.transAxes,
@@ -1148,7 +1145,7 @@ def plot_moving_target_track_path(filename, figsize=(8,8), ax=None):
     mask[np.asarray(ycens, int), np.asarray(xcens, int)] = 1
 
 
-    from astropy.convolution import convolve_fft, Box2DKernel
+    from astropy.convolution import convolve_fft
     # Select all pixels that are in the subarray path at least once
     mask2 = convolve_fft(mask, np.ones((32, 32)), normalize_kernel=False) > 0.5
 
@@ -1171,7 +1168,7 @@ def plot_moving_target_track_path(filename, figsize=(8,8), ax=None):
             transform=ax.transAxes,
             verticalalignment='top')
     if orientation=='raw':
-        ax.text(0.99, 0.99, f'detector raw orientation',
+        ax.text(0.99, 0.99, 'detector raw orientation',
             color='yellow',
             transform=ax.transAxes,
             verticalalignment='top', horizontalalignment='right')
@@ -1387,7 +1384,7 @@ def visit_guiding_timeline(visitid):
 
         elif this_step=='gs-track':
             if next_step=='gs-fg':
-                msg = f"Track successful"
+                msg = "Track successful"
         elif this_step=='gs-fg':
             _, prev_step, _ = filenames[i-1].split('_', maxsplit=2)
             if prev_step != 'gs-fg':
@@ -1539,7 +1536,7 @@ def visit_guiding_sequence(visitid, verbose=True, include_performance=True):
 
             elif this_step == 'gs-track':
                 if next_step == 'gs-fg':
-                    msg = f"Track successful"
+                    msg = "Track successful"
             elif this_step == 'gs-fg':
                 _, prev_step, _ = filenames[i - 1].split('_', maxsplit=2)
                 if prev_step != 'gs-fg':
@@ -1571,7 +1568,7 @@ def visit_guiding_sequence(visitid, verbose=True, include_performance=True):
                 msgstack += f"{time_end.iso} FGS Exposure End\n"
 
             if detected_dither:
-                msgstack += f"\nFine Guide stopped, for Dither move.\n"
+                msgstack += "\nFine Guide stopped, for Dither move.\n"
                 detected_dither = False
             elif i == len(guiding_file_table) - 1:
                 # Print any remaining messages at the end

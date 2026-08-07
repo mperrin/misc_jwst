@@ -1,13 +1,14 @@
+import io
+
+import astropy.table
+
+### Functions for accessing lists of accepted programs from STScI's public web pages
+import astropy.time
+import astropy.units as u
 import numpy as np
 import pandas as pd
 import requests
-import io
-import astropy.table
 
-
-### Functions for accessing lists of accepted programs from STScI's public web pages
-
-import astropy.time, astropy.units as u
 _CURRENT_CYCLE = int(np.ceil((astropy.time.Time.now()-astropy.time.Time('2022-07-01')).to_value(u.year)))
 
 def scrape_accepted_go_programs(cycle=1,
@@ -93,7 +94,7 @@ def scrape_accepted_gto_programs(cycle=1,
                              verbose=True,
                              ):
     from bs4 import BeautifulSoup
-    url = f"https://www.stsci.edu/jwst/science-execution/approved-programs/guaranteed-time-observations"
+    url = "https://www.stsci.edu/jwst/science-execution/approved-programs/guaranteed-time-observations"
     if verbose:
 
         print(f"Retrieving {url}")
@@ -146,7 +147,6 @@ def scrape_accepted_gto_programs(cycle=1,
 
 
 def hours_by_cycle():
-    from bs4 import BeautifulSoup
 
     go_programs = dict()
 

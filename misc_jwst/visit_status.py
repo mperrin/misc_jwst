@@ -1,13 +1,15 @@
+
+import astropy.coordinates as c
+import astropy.table
+import astropy.time
+import astropy.units as u
 import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import requests
 from bs4 import BeautifulSoup
-import astropy.time
-import datetime
-import astropy.table
-import astropy.coordinates as c, astropy.units as u
+
 import misc_jwst.programs
 
 
@@ -261,11 +263,14 @@ def dsn_schedule(return_table=False, verbose=True, lookback=0.5*u.day):
     """ Retrieve and display DSN contact schedule
     """
 
+    from io import BytesIO
+
+    import astropy.table
+    import astropy.time
+    import astropy.units as u
     import pandas
-    import requests
-    from io import StringIO, BytesIO
     import pytz
-    import astropy.table, astropy.time, astropy.units as u
+    import requests
 
     # Retreive schedule from web, and parse to astropy table, via Pandas
     dsn_jwst_url = 'https://spsweb.fltops.jpl.nasa.gov/rest/ops/info/activity/JWST/'
@@ -292,8 +297,8 @@ def dsn_schedule(return_table=False, verbose=True, lookback=0.5*u.day):
     # And print
     if verbose:
         print(" ")
-        print(f"      \t Location\tContact Time Period [UTC]        \tContact Time [Baltimore, US/Eastern]\tActivity")
-        print(f"      \t---------\t------------------------------------\t------------------------------------\t--------")
+        print("      \t Location\tContact Time Period [UTC]        \tContact Time [Baltimore, US/Eastern]\tActivity")
+        print("      \t---------\t------------------------------------\t------------------------------------\t--------")
         shown_now = False
         for i, row in enumerate(dsn_table[todays_dsn]):
             ni = np.clip(i+1, 0, sum(todays_dsn)-1)

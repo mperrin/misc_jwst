@@ -1,8 +1,9 @@
 import functools
-import astropy, astropy.units as u
-import jwst.datamodels
+
+import astropy
+import astropy.coordinates
+import astropy.units as u
 from astroquery.jplhorizons import Horizons
-import astropy, astropy.coordinates, astropy.io.fits as fits
 
 
 def get_visitid(visitstr):
@@ -110,3 +111,48 @@ def get_jwst_sun_pitch(skycoords, time):
     sun_seen_from_jwst = astropy.coordinates.SkyCoord(eph['RA'][0], eph['DEC'][0], unit='deg')
     return 90 - skycoords.separation(sun_seen_from_jwst).deg
 
+
+def open_hdulist_as_datamodel(hdulist):
+    """Open a JWST datamodel from an in-memory astropy HDUList object
+
+    This is mostly a compatibility wrapper to enable consistent behavior
+    across an API change in stdatamodels: On older versions, you can
+    pass an HDUList directly to datamodels.open; starting in stdatamodels
+    6.0 this no longer works. We work around this change by serializing
+    the HDUList to a buffer first, so it works like file.
+
+
+    Parameters
+    ----------
+    hdulist : astropy.io.fits.HDUList
+        The FITS HDUList to open as a datamodel.
+
+    Returns
+    -------
+    stdatamodels.jwst.datamodels.JwstDataModel
+        The opened datamodel, with class auto-detected from the
+        DATAMODL header keyword (or dimensionality fallback).
+    """
+    import jwst
+    import stdatamodels
+    from packaging.version import Version
+
+    if Version(stdatamodels.__version__) < Version("6.0"):
+        return jwst.datamodels.open(hdulist)
+    else:
+        # This version doesn't support hdulists to open directly
+        # so we have to instantiate the data model class directly. 
+        # First, figure out from the header which data model class we want
+        from stdatamodels.jwst import datamodels
+        model_type = hdulist[0].header.get("DATAMODL")
+        cls = getattr(datamodels, model_type, datamodels.JwstDataModel) if model_type else datamodels.JwstDataModel
+        model = cls(hdulist)
+
+        return model
+#
+#        cls = getattr(datamodels, hdul[0].header.get("DATAMODL")datamodels.JwstDataModel); model = cls(hdul)
+#        buf = io.BytesIO()
+#        hdulist.writeto(buf)
+#        buf.seek(0)
+#        return jwst.datamodels.open(buf)
+#

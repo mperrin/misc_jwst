@@ -1,13 +1,8 @@
-import astropy.io.fits as fits
-
-import requests
-from bs4 import BeautifulSoup
-
-import os
-import pandas
-
 import functools
+import os
 
+import astropy.io.fits as fits
+import pandas
 
 # Utility functions for working with JWST CRDS and retrieving/displaying metadata about reference files used.
 

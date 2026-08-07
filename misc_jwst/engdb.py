@@ -1,14 +1,14 @@
-import os
-import numpy as np
 import argparse
+import functools
+import os
 from csv import reader
 from datetime import datetime, timedelta, timezone
-from getpass import getpass
-from requests import Session
-from time import sleep
-import functools
 
-import astropy.table, astropy.units as u
+import astropy.table
+import astropy.units as u
+import numpy as np
+from requests import Session
+
 import misc_jwst.utils
 
 # See also https://jwst-pipeline.readthedocs.io/en/latest/jwst/lib/engdb.html
