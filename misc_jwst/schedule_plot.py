@@ -45,6 +45,8 @@ def setup_plot(ax=None, tstart=None, tend=None):
         ax.set_ylim(0,1)
         ax.axvline(now.plot_date, ls='--', color='green')
         ax.set_yticks([])
+    for ax in axes[0:2]:
+        ax.tick_params(axis='x', which='both', direction='in', labelbottom=False)
 
     axes[0].set_ylabel("Scheduled Visits", fontsize='large', fontweight='bold')
     axes[0].set_yticks([0.33, 0.66])
@@ -57,7 +59,7 @@ def setup_plot(ax=None, tstart=None, tend=None):
     axes[2].set_ylabel("Engineering\n and\n Communications\n", fontsize='large', fontweight='bold')
     axes[2].set_xlabel("Time [UTC]", fontweight='bold')
     axes[2].xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m-%d\nDay of year %j'))
-    axes[2].text(now.plot_date+0.005, 0.1, "Current Time Now", color='green', rotation=90)
+    axes[2].text(now.plot_date+0.005, 0.1, "Current Time Now", color='green', rotation=90, clip_on=True)
 
     return fig, axes
 
@@ -437,7 +439,7 @@ def schedule_plot(trange = 1*u.day, open_plot=True, verbose=True, future=False, 
 
     axes[1].fill_between([latest_log_time.plot_date, tend.plot_date], 0, 1, color='0.95', zorder=-10)
     axes[1].axvline(latest_log_time.plot_date, color='0.5', lw=0.5)
-    axes[1].text((latest_log_time+0.5*u.hour).plot_date, 0.5, "Observatory logs\nnot yet available", verticalalignment='center',  horizontalalignment='left', fontweight='light', fontsize='small')
+    axes[1].text((latest_log_time+0.5*u.hour).plot_date, 0.5, "Observatory logs\nnot yet available", verticalalignment='center',  horizontalalignment='left', fontweight='light', fontsize='small', clip_on=True)
 
     oplabel = schedule_full.meta['op_packages'][1 if tstart > schedule_full.meta['week2_start_time'] else 0]
     axes[0].text(0.005, 0.99, f"OP package: {oplabel}", transform=axes[0].transAxes, verticalalignment='top', fontsize='small')
